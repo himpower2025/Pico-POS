@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { CreditCard, Zap, Wifi, Edit, Plus, Trash2, LayoutTemplate, Coffee, Printer, Bluetooth, Building2, PaintBucket, CheckCircle2 } from 'lucide-react';
+import { CreditCard, Wifi, Edit, Plus, Trash2, LayoutTemplate, Coffee, Printer, Bluetooth, Building2, PaintBucket } from 'lucide-react';
 import { StoreProfile, MenuItem, Table } from '../types';
 
 interface SettingsViewProps {
