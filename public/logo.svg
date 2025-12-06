@@ -1,0 +1,56 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+<defs>
+<linearGradient id="bgGradient" x1="0" y1="0" x2="512" y2="512" gradientUnits="userSpaceOnUse">
+<stop stop-color="#6366f1"/>
+<stop offset="1" stop-color="#8b5cf6"/>
+</linearGradient>
+<mask id="gapMask">
+    <rect width="512" height="512" fill="white"/>
+    <!-- Masking shape with thicker stroke to widen the gap as requested -->
+    <!-- Modified shape: softened bottom-right corner -->
+    <path 
+        d="M140 370 H340 C390 370 420 340 420 290 C420 240 390 200 350 200 C320 200 290 220 260 220 C210 220 180 170 130 180 C80 190 60 240 60 290 C60 340 90 370 140 370 Z"
+        fill="black" 
+        stroke="black" 
+        stroke-width="55" 
+        stroke-linecap="round" 
+        stroke-linejoin="round"
+    />
+</mask>
+</defs>
+
+<!-- Background -->
+<rect width="512" height="512" rx="128" fill="url(#bgGradient)"/>
+
+<!-- Icon Group -->
+<g mask="url(#gapMask)" stroke="white" stroke-width="22" stroke-linecap="round" stroke-linejoin="round">
+    <!-- Sun: Moved left to cx=130, cy=155 -->
+    <circle cx="130" cy="155" r="50" />
+    
+    <!-- Rays: Selected based on the drawing (Removing X marked ones) -->
+    
+    <!-- Top (Approx 12:00) -->
+    <path d="M130 85 V55" /> 
+    
+    <!-- Top Left (Approx 10:30) -->
+    <path d="M95 120 L74 99" />
+    
+    <!-- Top Right (Approx 1:30) -->
+    <path d="M165 120 L186 99" />
+    
+    <!-- Right (Approx 3:00) -->
+    <path d="M200 155 H230" />
+    
+    <!-- Removed Left (9:00) and Bottom Right (4:30) rays as marked with X -->
+</g>
+
+<!-- Cloud/Mug Path: Foreground -->
+<!-- Bottom-right corner softened (removed strict vertical line) -->
+<path 
+    d="M140 370 H340 C390 370 420 340 420 290 C420 240 390 200 350 200 C320 200 290 220 260 220 C210 220 180 170 130 180 C80 190 60 240 60 290 C60 340 90 370 140 370 Z"
+    stroke="white" 
+    stroke-width="22"
+    stroke-linecap="round" 
+    stroke-linejoin="round"
+/>
+</svg>
