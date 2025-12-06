@@ -30,7 +30,7 @@ const aggregateSales = (orders: Order[], menu: MenuItem[]) => {
   };
 };
 
-export const analyzeBusiness = async (orders: Order[], menu: MenuItem[]) => {
+export const analyzeBusiness = async (orders: Order[], menu: MenuItem[]): Promise<string> => {
   const stats = aggregateSales(orders, menu);
   const prompt = `
     Analyze the following cafe sales data for "Pico Cafe".
@@ -53,14 +53,15 @@ export const analyzeBusiness = async (orders: Order[], menu: MenuItem[]) => {
         systemInstruction: "You are an expert Restaurant Business Analyst. You provide critical insights to maximize profit in English."
       }
     });
-    return response.text;
+    // Fix: Ensure string return by handling undefined
+    return response.text || "Analysis completed but no text was generated.";
   } catch (error) {
     console.error("Analysis failed", error);
     return "AI Analysis service is currently unavailable.";
   }
 };
 
-export const forecastSales = async (orders: Order[]) => {
+export const forecastSales = async (orders: Order[]): Promise<string> => {
   // Simulate historical context for the AI
   const prompt = `
     Based on the current sales patterns (Total orders today: ${orders.length}, Revenue: ${orders.reduce((acc, o) => acc + o.total, 0)}),
@@ -89,7 +90,8 @@ export const forecastSales = async (orders: Order[]) => {
         }
       }
     });
-    return response.text;
+    // Fix: Ensure string return by handling undefined, fallback to empty JSON array
+    return response.text || "[]";
   } catch (error) {
     console.error("Forecast failed", error);
     return "[]";
