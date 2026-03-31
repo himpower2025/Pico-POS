@@ -187,6 +187,11 @@ const LoginView: React.FC<LoginViewProps> = ({ onLogin }) => {
             </svg>
             Google Account
           </button>
+
+          <div className="mt-12 text-center">
+            <p className="text-xs text-gray-400 font-medium uppercase tracking-widest">Developed & Maintained by</p>
+            <p className="text-sm text-gray-600 font-bold mt-1">Himpower Pvt. Ltd.</p>
+          </div>
         </div>
       </div>
     </div>

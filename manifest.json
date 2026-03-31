@@ -1,7 +1,7 @@
 {
   "name": "Pico POS",
   "short_name": "Pico",
-  "description": "Smart POS for modern cafes",
+  "description": "Smart POS for modern cafes by Himpower Pvt. Ltd.",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#f3f4f6",

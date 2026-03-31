@@ -260,6 +260,11 @@ const App: React.FC = () => {
         <button onClick={handleLogout} className="text-gray-500 hover:text-red-400 p-3 hidden md:block" title="Logout">
           <LogOut size={24} />
         </button>
+
+        <div className="mt-auto pb-4 hidden md:flex flex-col items-center gap-1 opacity-20 hover:opacity-100 transition-opacity cursor-default">
+           <div className="w-8 h-8 rounded-lg bg-white/10 flex items-center justify-center text-[10px] font-black text-white border border-white/10">HP</div>
+           <span className="text-[8px] text-gray-500 font-bold uppercase tracking-tighter">Himpower</span>
+        </div>
       </nav>
 
       {/* Main Content Area */}

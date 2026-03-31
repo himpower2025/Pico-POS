@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { CreditCard, Wifi, Edit, Plus, Trash2, LayoutTemplate, Coffee, Printer, Bluetooth, Building2, PaintBucket } from 'lucide-react';
+import { CreditCard, Wifi, Edit, Plus, Trash2, LayoutTemplate, Coffee, Printer, Bluetooth, Building2, PaintBucket, CloudSun } from 'lucide-react';
 import { StoreProfile, MenuItem, Table } from '../types';
 
 interface SettingsViewProps {
@@ -11,7 +11,7 @@ interface SettingsViewProps {
     onUpdateTables: (t: Table[]) => void;
 }
 
-type Tab = 'profile' | 'menu' | 'floor' | 'hardware';
+type Tab = 'profile' | 'menu' | 'floor' | 'hardware' | 'about';
 
 const SettingsView: React.FC<SettingsViewProps> = ({ 
     storeProfile, onUpdateProfile, 
@@ -169,6 +169,12 @@ const SettingsView: React.FC<SettingsViewProps> = ({
                 className={`px-4 py-2 rounded-lg font-medium text-sm transition flex items-center gap-1 ${activeTab === 'hardware' ? 'bg-indigo-600 text-white' : 'text-gray-600 hover:bg-gray-100'}`}
             >
                 Hardware
+            </button>
+            <button 
+                onClick={() => setActiveTab('about')}
+                className={`px-4 py-2 rounded-lg font-medium text-sm transition ${activeTab === 'about' ? 'bg-indigo-600 text-white' : 'text-gray-600 hover:bg-gray-100'}`}
+            >
+                About
             </button>
          </div>
       </div>
@@ -515,6 +521,71 @@ const SettingsView: React.FC<SettingsViewProps> = ({
                     </div>
                 </div>
              )}
+
+            {/* ABOUT TAB */}
+            {activeTab === 'about' && (
+                <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2">
+                    <div className="bg-white rounded-3xl shadow-xl border border-gray-100 overflow-hidden">
+                        <div className="bg-gradient-to-br from-indigo-600 to-violet-700 p-12 text-white text-center relative">
+                            <div className="relative z-10">
+                                <div className="w-24 h-24 bg-white/20 backdrop-blur-md rounded-3xl mx-auto mb-6 flex items-center justify-center border border-white/20 shadow-inner">
+                                    <CloudSun size={48} className="text-white" />
+                                </div>
+                                <h2 className="text-4xl font-black tracking-tight mb-2">Pico POS</h2>
+                                <p className="text-indigo-100 text-lg font-light opacity-80">Version 2.4.0 (Enterprise Edition)</p>
+                            </div>
+                            
+                            {/* Decorative elements */}
+                            <div className="absolute top-0 right-0 w-64 h-64 bg-white/10 rounded-full -translate-y-1/2 translate-x-1/2 blur-3xl"></div>
+                            <div className="absolute bottom-0 left-0 w-48 h-48 bg-indigo-400/20 rounded-full translate-y-1/2 -translate-x-1/2 blur-2xl"></div>
+                        </div>
+                        
+                        <div className="p-12 space-y-10">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
+                                <div className="space-y-4">
+                                    <h3 className="text-xs font-black text-indigo-600 uppercase tracking-[0.2em]">Developer Information</h3>
+                                    <div className="space-y-2">
+                                        <p className="text-2xl font-bold text-gray-900">Himpower Pvt. Ltd.</p>
+                                        <p className="text-gray-500 leading-relaxed">
+                                            A leading technology solutions provider specializing in retail automation, 
+                                            cloud-based POS systems, and business intelligence analytics.
+                                        </p>
+                                    </div>
+                                    <div className="pt-4 flex flex-col gap-3">
+                                        <div className="flex items-center gap-3 text-gray-600">
+                                            <div className="w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center"><Building2 size={16}/></div>
+                                            <span className="text-sm font-medium">Headquarters: Seoul, South Korea</span>
+                                        </div>
+                                        <div className="flex items-center gap-3 text-gray-600">
+                                            <div className="w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center"><Wifi size={16}/></div>
+                                            <span className="text-sm font-medium">Website: www.himpower.io</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <div className="space-y-4">
+                                    <h3 className="text-xs font-black text-indigo-600 uppercase tracking-[0.2em]">Legal & Compliance</h3>
+                                    <div className="bg-gray-50 rounded-2xl p-6 border border-gray-100">
+                                        <p className="text-sm text-gray-600 leading-relaxed italic">
+                                            "This software is the intellectual property of Himpower Pvt. Ltd. 
+                                            Unauthorized duplication, distribution, or reverse engineering of this 
+                                            product is strictly prohibited under international copyright laws."
+                                        </p>
+                                        <div className="mt-4 pt-4 border-t border-gray-200 flex justify-between items-center">
+                                            <span className="text-[10px] font-bold text-gray-400 uppercase">License: Enterprise</span>
+                                            <span className="text-[10px] font-bold text-gray-400 uppercase">ID: HP-POS-2026-X99</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div className="pt-8 border-t border-gray-100 text-center">
+                                <p className="text-xs text-gray-400 font-medium">© 2026 Himpower Pvt. Ltd. All Rights Reserved.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
 
         </div>
       </div>
