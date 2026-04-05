@@ -4,6 +4,7 @@ import { analyzeBusiness, forecastSales } from '../services/geminiService';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area } from 'recharts';
 import { Sparkles, TrendingUp, DollarSign, Activity, BrainCircuit, Coins, Calendar, Zap, ListChecks, RotateCcw, Printer } from 'lucide-react';
 import ReceiptModal from './ReceiptModal';
+import { formatCurrency } from '../lib/utils';
 
 interface DashboardViewProps {
   orders: Order[];
@@ -155,7 +156,7 @@ const DashboardView: React.FC<DashboardViewProps> = ({ orders, onUpdateOrders, m
                 <div className="p-2 bg-blue-100 text-blue-600 rounded-lg"><DollarSign size={20} /></div>
                 <span className="text-sm text-gray-500 font-medium">Total Revenue</span>
             </div>
-            <h3 className="text-2xl font-bold text-gray-900">{storeProfile.currency} {stats.revenue.toLocaleString()}</h3>
+            <h3 className="text-2xl font-bold text-gray-900">{formatCurrency(stats.revenue, storeProfile.currency)}</h3>
           </div>
           
           <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex flex-col gap-2">
@@ -163,7 +164,7 @@ const DashboardView: React.FC<DashboardViewProps> = ({ orders, onUpdateOrders, m
                 <div className="p-2 bg-red-100 text-red-600 rounded-lg"><Coins size={20} /></div>
                 <span className="text-sm text-gray-500 font-medium">Total Cost</span>
             </div>
-            <h3 className="text-2xl font-bold text-gray-900">{storeProfile.currency} {stats.cost.toLocaleString()}</h3>
+            <h3 className="text-2xl font-bold text-gray-900">{formatCurrency(stats.cost, storeProfile.currency)}</h3>
           </div>
 
           <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex flex-col gap-2">
@@ -171,7 +172,7 @@ const DashboardView: React.FC<DashboardViewProps> = ({ orders, onUpdateOrders, m
                 <div className="p-2 bg-green-100 text-green-600 rounded-lg"><TrendingUp size={20} /></div>
                 <span className="text-sm text-gray-500 font-medium">Net Profit</span>
             </div>
-            <h3 className="text-2xl font-bold text-green-600">{storeProfile.currency} {stats.profit.toLocaleString()}</h3>
+            <h3 className="text-2xl font-bold text-green-600">{formatCurrency(stats.profit, storeProfile.currency)}</h3>
             <span className="text-xs text-green-500 font-medium">
                 {stats.revenue > 0 ? ((stats.profit / stats.revenue) * 100).toFixed(1) : 0}% Margin
             </span>
@@ -214,7 +215,7 @@ const DashboardView: React.FC<DashboardViewProps> = ({ orders, onUpdateOrders, m
                      <YAxis axisLine={false} tickLine={false} tick={{fill: '#64748b', fontSize: 12}} tickFormatter={(value) => `${value/1000}k`} />
                      <Tooltip 
                         contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
-                        formatter={(value: number) => [`${storeProfile.currency} ${value.toLocaleString()}`]}
+                        formatter={(value: number) => [formatCurrency(value, storeProfile.currency)]}
                      />
                      <Area type="monotone" dataKey="sales" name="Revenue" stroke="#3b82f6" strokeWidth={3} fillOpacity={1} fill="url(#colorSales)" />
                      <Area type="monotone" dataKey="profit" name="Net Profit" stroke="#10b981" strokeWidth={3} fillOpacity={1} fill="url(#colorProfit)" />
@@ -258,7 +259,7 @@ const DashboardView: React.FC<DashboardViewProps> = ({ orders, onUpdateOrders, m
                                         </span>
                                     </td>
                                     <td className="px-6 py-4 text-right font-bold text-gray-900">
-                                        {storeProfile.currency} {order.total.toLocaleString()}
+                                        {formatCurrency(order.total, storeProfile.currency)}
                                     </td>
                                     <td className="px-6 py-4">
                                         <div className="flex justify-center gap-2">
@@ -355,7 +356,7 @@ const DashboardView: React.FC<DashboardViewProps> = ({ orders, onUpdateOrders, m
                            <Tooltip 
                              cursor={{fill: '#f1f5f9'}}
                              contentStyle={{ borderRadius: '8px', border: 'none' }}
-                             formatter={(value: number) => [`${storeProfile.currency} ${value.toLocaleString()}`, 'Revenue']}
+                             formatter={(value: number) => [formatCurrency(value, storeProfile.currency), 'Revenue']}
                            />
                            <Bar dataKey="revenue" fill="#6366f1" radius={[4, 4, 0, 0]} />
                          </BarChart>

@@ -1,6 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { CreditCard, Wifi, Edit, Plus, Trash2, LayoutTemplate, Coffee, Printer, Bluetooth, Building2, PaintBucket, CloudSun } from 'lucide-react';
 import { StoreProfile, MenuItem, Table } from '../types';
+import { formatCurrency } from '../lib/utils';
 
 interface SettingsViewProps {
     storeProfile: StoreProfile;
@@ -376,11 +377,11 @@ const SettingsView: React.FC<SettingsViewProps> = ({
                                 <div className="flex-1">
                                     <h4 className="font-bold text-gray-900">{item.name}</h4>
                                     <p className="text-sm text-gray-500 capitalize">
-                                        {item.category} • Cost: {item.cost} • <span className={item.stock < 10 ? 'text-red-600 font-bold' : 'text-gray-600'}>Stock: {item.stock}</span>
+                                        {item.category} • Cost: {formatCurrency(item.cost, storeProfile.currency)} • <span className={item.stock < 10 ? 'text-red-600 font-bold' : 'text-gray-600'}>Stock: {item.stock}</span>
                                     </p>
                                 </div>
                                 <div className="text-right mr-4">
-                                    <p className="font-bold text-indigo-600">{storeProfile.currency} {item.price}</p>
+                                    <p className="font-bold text-indigo-600">{formatCurrency(item.price, storeProfile.currency)}</p>
                                 </div>
                                 <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                                     <button onClick={() => setEditingItem(item)} className="p-2 text-gray-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg">

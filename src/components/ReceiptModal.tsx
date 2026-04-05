@@ -1,6 +1,7 @@
 import React from 'react';
 import { Order, StoreProfile } from '../types';
 import { X, Printer } from 'lucide-react';
+import { formatCurrency } from '../lib/utils';
 
 interface ReceiptModalProps {
   order: Order | null;
@@ -45,7 +46,7 @@ const ReceiptModal: React.FC<ReceiptModalProps> = ({ order, onClose, storeProfil
                     <div key={idx} className="mb-2">
                         <div className="flex justify-between">
                             <span>{item.name} x{item.quantity}</span>
-                            <span>{(item.price * item.quantity).toLocaleString()}</span>
+                            <span>{formatCurrency(item.price * item.quantity, storeProfile.currency)}</span>
                         </div>
                         {item.notes && (
                              <div className="text-[10px] text-gray-500 pl-2 mt-0.5 italic">
@@ -59,15 +60,15 @@ const ReceiptModal: React.FC<ReceiptModalProps> = ({ order, onClose, storeProfil
             <div className="border-t-2 border-gray-800 pt-2 mb-6">
                  <div className="flex justify-between text-lg font-bold">
                     <span>TOTAL</span>
-                    <span>{storeProfile.currency} {order.total.toLocaleString()}</span>
+                    <span>{formatCurrency(order.total, storeProfile.currency)}</span>
                 </div>
                 <div className="flex justify-between text-xs text-gray-500 mt-1">
                     <span>Taxable Amt</span>
-                    <span>{storeProfile.currency} {Math.floor(order.total * 0.87).toLocaleString()}</span>
+                    <span>{formatCurrency(order.total * 0.87, storeProfile.currency)}</span>
                 </div>
                 <div className="flex justify-between text-xs text-gray-500">
                     <span>VAT ({storeProfile.taxRate}%)</span>
-                    <span>{storeProfile.currency} {Math.floor(order.total * (storeProfile.taxRate / 100)).toLocaleString()}</span>
+                    <span>{formatCurrency(order.total * (storeProfile.taxRate / 100), storeProfile.currency)}</span>
                 </div>
             </div>
 

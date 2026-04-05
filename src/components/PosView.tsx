@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Table, MenuItem, OrderItem, StoreProfile } from '../types';
 import { Coffee, Utensils, CupSoda, Cake, ShoppingCart, User, ChevronRight, Minus, Plus, Map, StickyNote } from 'lucide-react';
+import { formatCurrency } from '../lib/utils';
 
 interface PosViewProps {
   tables: Table[];
@@ -206,7 +207,7 @@ const PosView: React.FC<PosViewProps> = ({ tables, menu, onPlaceOrder, storeProf
                             <span className="text-gray-400 text-xs capitalize">{item.category}</span>
                         </div>
                         <div className="flex justify-between items-end">
-                            <span className="font-bold text-sm md:text-lg text-indigo-600">{storeProfile.currency} {item.price.toLocaleString()}</span>
+                            <span className="font-bold text-sm md:text-lg text-indigo-600">{formatCurrency(item.price, storeProfile.currency)}</span>
                             {!isOutOfStock && (
                                 <div className="w-8 h-8 rounded-full bg-indigo-50 text-indigo-600 hidden lg:flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
                                     <Plus size={16} />
@@ -248,7 +249,7 @@ const PosView: React.FC<PosViewProps> = ({ tables, menu, onPlaceOrder, storeProf
                     <div className="flex-1 flex flex-col justify-between">
                         <div className="flex justify-between items-start">
                             <div className="font-bold text-gray-800 leading-tight text-sm md:text-base">{item.name}</div>
-                            <div className="text-xs text-gray-500 mt-1">{storeProfile.currency} {item.price.toLocaleString()}</div>
+                            <div className="text-xs text-gray-500 mt-1">{formatCurrency(item.price, storeProfile.currency)}</div>
                         </div>
                         <div className="flex items-center justify-between mt-1">
                              <div className="flex items-center gap-3">
@@ -297,16 +298,16 @@ const PosView: React.FC<PosViewProps> = ({ tables, menu, onPlaceOrder, storeProf
           <div className="space-y-1 md:space-y-2 text-sm md:text-base">
             <div className="flex justify-between text-gray-500">
               <span>Subtotal</span>
-              <span>{storeProfile.currency} {Math.floor(orderTotal * 0.87).toLocaleString()}</span>
+              <span>{formatCurrency(orderTotal * 0.87, storeProfile.currency)}</span>
             </div>
             <div className="flex justify-between text-gray-500">
               <span>VAT (13%)</span>
-              <span>{storeProfile.currency} {Math.floor(orderTotal * 0.13).toLocaleString()}</span>
+              <span>{formatCurrency(orderTotal * 0.13, storeProfile.currency)}</span>
             </div>
             <div className="border-t border-dashed border-gray-200 my-2"></div>
             <div className="flex justify-between text-xl md:text-2xl font-bold text-gray-900">
               <span>Total</span>
-              <span>{storeProfile.currency} {orderTotal.toLocaleString()}</span>
+              <span>{formatCurrency(orderTotal, storeProfile.currency)}</span>
             </div>
           </div>
           
@@ -315,7 +316,7 @@ const PosView: React.FC<PosViewProps> = ({ tables, menu, onPlaceOrder, storeProf
             disabled={currentOrder.length === 0}
             className="w-full bg-slate-900 hover:bg-black text-white py-3 md:py-4 rounded-xl font-bold text-base md:text-lg shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 transition-all active:scale-95"
           >
-            <span>Charge {storeProfile.currency} {orderTotal.toLocaleString()}</span>
+            <span>Charge {formatCurrency(orderTotal, storeProfile.currency)}</span>
             <ChevronRight size={20} />
           </button>
         </div>
