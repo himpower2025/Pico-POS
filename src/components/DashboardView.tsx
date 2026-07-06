@@ -4,7 +4,15 @@ import { analyzeBusiness, forecastSales } from '../services/geminiService';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area } from 'recharts';
 import { Sparkles, TrendingUp, DollarSign, Activity, BrainCircuit, Coins, Calendar, Zap, ListChecks, RotateCcw, Printer } from 'lucide-react';
 import ReceiptModal from './ReceiptModal';
-import { formatCurrency } from '../lib/utils';
+import { formatCurrency, getCurrencyConfig } from '../lib/utils';
+
+interface OperationalExpense {
+  id: string;
+  description: string;
+  amount: number; // in USD (base)
+  date: string;
+  category: 'Rent' | 'Salary' | 'Utilities' | 'Ingredients' | 'Marketing' | 'Other';
+}
 
 interface DashboardViewProps {
   orders: Order[];
@@ -24,10 +32,66 @@ const DashboardView: React.FC<DashboardViewProps> = ({ orders, onUpdateOrders, m
   // State for reprinting/viewing specific past orders
   const [previewOrder, setPreviewOrder] = useState<Order | null>(null);
 
-  // Calculate real-time stats
+  // Custom operational expenses
+  const [expenses, setExpenses] = useState<OperationalExpense[]>(() => {
+    try {
+      const saved = localStorage.getItem('pico_operating_expenses');
+      return saved ? JSON.parse(saved) : [
+        { id: 'exp-1', description: 'Monthly Shop Rent', amount: 350, date: new Date().toISOString().split('T')[0], category: 'Rent' },
+        { id: 'exp-2', description: 'Electricity & Water Utilities', amount: 80, date: new Date().toISOString().split('T')[0], category: 'Utilities' },
+        { id: 'exp-3', description: 'Store Marketing Flyers', amount: 45, date: new Date().toISOString().split('T')[0], category: 'Marketing' }
+      ];
+    } catch (e) {
+      return [];
+    }
+  });
+
+  const saveExpenses = (updatedExpenses: OperationalExpense[]) => {
+    setExpenses(updatedExpenses);
+    localStorage.setItem('pico_operating_expenses', JSON.stringify(updatedExpenses));
+  };
+
+  const currencyConfig = getCurrencyConfig(storeProfile.currency);
+
+  const [newExpDesc, setNewExpDesc] = useState('');
+  const [newExpAmount, setNewExpAmount] = useState('');
+  const [newExpCategory, setNewExpCategory] = useState<'Rent' | 'Salary' | 'Utilities' | 'Ingredients' | 'Marketing' | 'Other'>('Utilities');
+  const [newExpDate, setNewExpDate] = useState(() => new Date().toISOString().split('T')[0]);
+
+  const handleAddExpense = (e: React.FormEvent) => {
+    e.preventDefault();
+    const localAmount = parseFloat(newExpAmount);
+    if (!newExpDesc.trim() || isNaN(localAmount) || localAmount <= 0) {
+      alert('Please enter a valid description and positive amount.');
+      return;
+    }
+
+    // Convert local input currency amount to USD base
+    const baseAmount = localAmount / currencyConfig.rate;
+
+    const newExpense: OperationalExpense = {
+      id: `exp-${Date.now()}`,
+      description: newExpDesc.trim(),
+      amount: baseAmount,
+      date: newExpDate,
+      category: newExpCategory
+    };
+
+    saveExpenses([...expenses, newExpense]);
+    setNewExpDesc('');
+    setNewExpAmount('');
+  };
+
+  const handleDeleteExpense = (id: string) => {
+    if (confirm('Are you sure you want to delete this expense record?')) {
+      saveExpenses(expenses.filter(e => e.id !== id));
+    }
+  };
+
+  // Calculate real-time stats including custom operational expenses
   const stats = useMemo(() => {
     let revenue = 0;
-    let cost = 0;
+    let ingredientCost = 0;
     // Filter out refunded orders from stats
     const validOrders = orders.filter(o => o.status === 'completed');
     
@@ -36,17 +100,23 @@ const DashboardView: React.FC<DashboardViewProps> = ({ orders, onUpdateOrders, m
       order.items.forEach(item => {
         const menuItem = menu.find(m => m.id === item.id);
         const itemCost = menuItem ? menuItem.cost : 0;
-        cost += itemCost * item.quantity;
+        ingredientCost += itemCost * item.quantity;
       });
     });
+
+    const customExpensesSum = expenses.reduce((sum, exp) => sum + exp.amount, 0);
+    const totalCost = ingredientCost + customExpensesSum;
+
     return {
       revenue,
-      cost,
-      profit: revenue - cost,
+      ingredientCost,
+      customExpensesSum,
+      cost: totalCost,
+      profit: revenue - totalCost,
       count: validOrders.length,
       avgValue: validOrders.length > 0 ? Math.floor(revenue / validOrders.length) : 0
     };
-  }, [orders, menu]);
+  }, [orders, menu, expenses]);
 
   // Mock data generation
   const chartData = useMemo(() => {
@@ -151,46 +221,65 @@ const DashboardView: React.FC<DashboardViewProps> = ({ orders, onUpdateOrders, m
 
         {/* KPI Cards */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-          <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex flex-col gap-2">
-            <div className="flex items-center gap-3 mb-2">
-                <div className="p-2 bg-blue-100 text-blue-600 rounded-lg"><DollarSign size={20} /></div>
-                <span className="text-sm text-gray-500 font-medium">Total Revenue</span>
+          <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex flex-col justify-between">
+            <div>
+              <div className="flex items-center gap-3 mb-2">
+                  <div className="p-2 bg-blue-100 text-blue-600 rounded-lg"><DollarSign size={20} /></div>
+                  <span className="text-sm text-gray-500 font-medium">Total Revenue</span>
+              </div>
+              <h3 className="text-2xl font-bold text-gray-900">{formatCurrency(stats.revenue, storeProfile.currency)}</h3>
             </div>
-            <h3 className="text-2xl font-bold text-gray-900">{formatCurrency(stats.revenue, storeProfile.currency)}</h3>
+            <div className="text-[10px] text-gray-400 mt-2 pt-2 border-t border-gray-100">
+              Automatic sales calculation
+            </div>
           </div>
           
-          <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex flex-col gap-2">
-            <div className="flex items-center gap-3 mb-2">
-                <div className="p-2 bg-red-100 text-red-600 rounded-lg"><Coins size={20} /></div>
-                <span className="text-sm text-gray-500 font-medium">Total Cost</span>
+          <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex flex-col justify-between">
+            <div>
+              <div className="flex items-center gap-3 mb-2">
+                  <div className="p-2 bg-red-100 text-red-600 rounded-lg"><Coins size={20} /></div>
+                  <span className="text-sm text-gray-500 font-medium">Total Cost</span>
+              </div>
+              <h3 className="text-2xl font-bold text-gray-900">{formatCurrency(stats.cost, storeProfile.currency)}</h3>
             </div>
-            <h3 className="text-2xl font-bold text-gray-900">{formatCurrency(stats.cost, storeProfile.currency)}</h3>
+            <div className="text-[10px] text-gray-400 flex justify-between mt-2 pt-2 border-t border-gray-100">
+              <span>COGS: {formatCurrency(stats.ingredientCost, storeProfile.currency)}</span>
+              <span>Ops: {formatCurrency(stats.customExpensesSum, storeProfile.currency)}</span>
+            </div>
           </div>
 
-          <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex flex-col gap-2">
-            <div className="flex items-center gap-3 mb-2">
-                <div className="p-2 bg-green-100 text-green-600 rounded-lg"><TrendingUp size={20} /></div>
-                <span className="text-sm text-gray-500 font-medium">Net Profit</span>
+          <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex flex-col justify-between">
+            <div>
+              <div className="flex items-center gap-3 mb-2">
+                  <div className="p-2 bg-green-100 text-green-600 rounded-lg"><TrendingUp size={20} /></div>
+                  <span className="text-sm text-gray-500 font-medium">Net Profit</span>
+              </div>
+              <h3 className="text-2xl font-bold text-green-600">{formatCurrency(stats.profit, storeProfile.currency)}</h3>
             </div>
-            <h3 className="text-2xl font-bold text-green-600">{formatCurrency(stats.profit, storeProfile.currency)}</h3>
-            <span className="text-xs text-green-500 font-medium">
-                {stats.revenue > 0 ? ((stats.profit / stats.revenue) * 100).toFixed(1) : 0}% Margin
-            </span>
+            <div className="text-xs text-green-500 font-medium flex justify-between mt-2 pt-2 border-t border-gray-100">
+              <span>{stats.revenue > 0 ? ((stats.profit / stats.revenue) * 100).toFixed(1) : 0}% Margin</span>
+              <span className="text-[10px] text-gray-400 font-normal">Revenue - Total Cost</span>
+            </div>
           </div>
 
-          <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex flex-col gap-2">
-            <div className="flex items-center gap-3 mb-2">
-                <div className="p-2 bg-purple-100 text-purple-600 rounded-lg"><Activity size={20} /></div>
-                <span className="text-sm text-gray-500 font-medium">Total Orders</span>
+          <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex flex-col justify-between">
+            <div>
+              <div className="flex items-center gap-3 mb-2">
+                  <div className="p-2 bg-purple-100 text-purple-600 rounded-lg"><Activity size={20} /></div>
+                  <span className="text-sm text-gray-500 font-medium">Total Orders</span>
+              </div>
+              <h3 className="text-2xl font-bold text-gray-900">{stats.count}</h3>
             </div>
-            <h3 className="text-2xl font-bold text-gray-900">{stats.count}</h3>
+            <div className="text-[10px] text-gray-400 mt-2 pt-2 border-t border-gray-100">
+              Completed transactions
+            </div>
           </div>
         </div>
 
         {activeTab === 'overview' && (
            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-in slide-in-from-bottom-4 duration-500">
              {/* Main Chart */}
-             <div className="lg:col-span-3 bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+             <div className="lg:col-span-2 bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
                <div className="flex justify-between items-center mb-6">
                     <h3 className="text-lg font-bold text-gray-800 flex items-center gap-2">
                         <Calendar size={18} className="text-gray-400"/>
@@ -222,6 +311,115 @@ const DashboardView: React.FC<DashboardViewProps> = ({ orders, onUpdateOrders, m
                    </AreaChart>
                  </ResponsiveContainer>
                </div>
+             </div>
+
+             {/* Custom Operating Expenses Panel */}
+             <div className="lg:col-span-1 bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex flex-col justify-between">
+                <div>
+                  <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center justify-between">
+                    <span>Operating Expenses</span>
+                    <span className="text-xs bg-red-50 text-red-600 px-2 py-1 rounded-lg font-mono font-bold">
+                      {formatCurrency(stats.customExpensesSum, storeProfile.currency)}
+                    </span>
+                  </h3>
+
+                  {/* Add Expense Form */}
+                  <form onSubmit={handleAddExpense} className="space-y-3 mb-5 bg-gray-50/50 p-4 rounded-xl border border-gray-100">
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="block text-[9px] font-bold text-gray-400 uppercase tracking-wider mb-1">Category</label>
+                        <select
+                          value={newExpCategory}
+                          onChange={(e) => setNewExpCategory(e.target.value as any)}
+                          className="w-full text-xs px-2 py-1.5 rounded-lg border border-gray-200 bg-white font-medium focus:ring-2 focus:ring-indigo-500 outline-none"
+                        >
+                          <option value="Rent">Rent</option>
+                          <option value="Salary">Salary</option>
+                          <option value="Utilities">Utilities</option>
+                          <option value="Ingredients">Ingredients</option>
+                          <option value="Marketing">Marketing</option>
+                          <option value="Other">Other</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-[9px] font-bold text-gray-400 uppercase tracking-wider mb-1">Date</label>
+                        <input
+                          type="date"
+                          value={newExpDate}
+                          onChange={(e) => setNewExpDate(e.target.value)}
+                          className="w-full text-xs px-2 py-1.5 rounded-lg border border-gray-200 bg-white font-mono focus:ring-2 focus:ring-indigo-500 outline-none"
+                          required
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-[9px] font-bold text-gray-400 uppercase tracking-wider mb-1">Description</label>
+                      <input
+                        type="text"
+                        placeholder="e.g. Electricity, Water, Rent..."
+                        value={newExpDesc}
+                        onChange={(e) => setNewExpDesc(e.target.value)}
+                        className="w-full text-xs px-3 py-1.5 rounded-lg border border-gray-200 bg-white focus:ring-2 focus:ring-indigo-500 outline-none"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[9px] font-bold text-gray-400 uppercase tracking-wider mb-1">
+                        Amount ({currencyConfig.symbol})
+                      </label>
+                      <div className="relative">
+                        <span className="absolute left-2.5 top-2 text-xs text-gray-400 font-mono font-bold">{currencyConfig.symbol}</span>
+                        <input
+                          type="number"
+                          step="any"
+                          placeholder="0.00"
+                          value={newExpAmount}
+                          onChange={(e) => setNewExpAmount(e.target.value)}
+                          className="w-full text-xs pl-8 pr-3 py-1.5 rounded-lg border border-gray-200 bg-white font-mono font-bold focus:ring-2 focus:ring-indigo-500 outline-none"
+                          required
+                        />
+                      </div>
+                    </div>
+                    <button
+                      type="submit"
+                      className="w-full bg-gray-900 text-white text-xs font-bold py-2 rounded-lg hover:bg-gray-800 transition active:scale-[0.98]"
+                    >
+                      + Record Expense
+                    </button>
+                  </form>
+
+                  {/* Expenses List */}
+                  <div className="space-y-2 max-h-[160px] overflow-y-auto pr-1">
+                    {expenses.length === 0 ? (
+                      <p className="text-xs text-gray-400 text-center py-6">No custom expenses recorded.</p>
+                    ) : (
+                      expenses.slice().reverse().map((exp) => (
+                        <div key={exp.id} className="flex items-center justify-between p-2.5 bg-gray-50 rounded-xl hover:bg-gray-100/70 transition border border-gray-100">
+                          <div className="min-w-0 flex-1 pr-2">
+                            <p className="text-xs font-semibold text-gray-800 truncate">{exp.description}</p>
+                            <div className="flex gap-1.5 mt-0.5 items-center">
+                              <span className="text-[9px] bg-red-50 text-red-600 px-1.5 py-0.2 rounded font-bold uppercase tracking-wider">
+                                {exp.category}
+                              </span>
+                              <span className="text-[9px] text-gray-400 font-mono">{exp.date}</span>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-mono font-black text-red-600 whitespace-nowrap">
+                              -{formatCurrency(exp.amount, storeProfile.currency)}
+                            </span>
+                            <button
+                              onClick={() => handleDeleteExpense(exp.id)}
+                              className="text-gray-300 hover:text-red-500 transition text-[10px] font-bold p-1"
+                            >
+                              ✕
+                            </button>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
              </div>
            </div>
         )}
