@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { StoreProfile } from '../types';
 import { 
-  CreditCard, Check, Zap, Award, Sparkles, ShieldCheck, 
-  HelpCircle, Code2, ArrowRight, Lock, Calendar, RefreshCw 
+  CreditCard, Zap, Award, Sparkles, ShieldCheck, 
+  Lock, RefreshCw 
 } from 'lucide-react';
 
 interface SubscriptionViewProps {
@@ -23,7 +23,6 @@ export const SubscriptionView: React.FC<SubscriptionViewProps> = ({
   
   const [isProcessing, setIsProcessing] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
-  const [showDeveloperGuide, setShowDeveloperGuide] = useState(false);
 
   // Fallbacks for profile subscription fields
   const currentStatus = storeProfile.subscriptionStatus || 'none';
@@ -501,146 +500,6 @@ export const SubscriptionView: React.FC<SubscriptionViewProps> = ({
           </button>
         </div>
       )}
-
-      {/* Stripe Developer Integration Guide */}
-      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-        <button 
-          onClick={() => setShowDeveloperGuide(!showDeveloperGuide)}
-          className="w-full px-6 py-5 flex items-center justify-between bg-slate-50 border-b border-slate-100 hover:bg-slate-100/50 transition text-left"
-        >
-          <div className="flex items-center gap-3">
-            <div className="p-2.5 bg-indigo-50 text-indigo-600 rounded-xl"><Code2 size={20} /></div>
-            <div>
-              <h4 className="font-bold text-gray-900">Stripe Live Integration Guide (For Developers)</h4>
-              <p className="text-xs text-gray-500">Learn how to configure real credit card billing in production</p>
-            </div>
-          </div>
-          <span className="text-xs font-bold text-indigo-600 bg-indigo-50 px-2.5 py-1 rounded-md">
-            {showDeveloperGuide ? 'Hide Guide' : 'Show Guide'}
-          </span>
-        </button>
-
-        {showDeveloperGuide && (
-          <div className="p-6 md:p-8 space-y-8 animate-in slide-in-from-top-4 duration-300 text-sm leading-relaxed text-gray-700 max-h-[800px] overflow-y-auto">
-            
-            <section className="space-y-3">
-              <h5 className="font-bold text-gray-900 flex items-center gap-1.5 text-base">
-                <ShieldCheck size={18} className="text-indigo-600" />
-                1. System Requirements & Architecture
-              </h5>
-              <p>
-                To enable safe credit card handling without exposing your server to heavy PCI liability, Stripe isolates credentials completely:
-              </p>
-              <ul className="list-disc pl-6 space-y-1.5">
-                <li><strong>Frontend:</strong> Uses Stripe Elements (iframe) or Stripe Checkout (hosted redirect) to capture card details and returns a secure <code>PaymentMethod</code> or <code>Token</code> ID.</li>
-                <li><strong>Backend:</strong> Uses the Stripe API token on your secure node server (<code>server.ts</code>) to create subscriptions or payments.</li>
-              </ul>
-            </section>
-
-            <section className="space-y-3">
-              <h5 className="font-bold text-gray-900 flex items-center gap-1.5 text-base">
-                <Code2 size={18} className="text-indigo-600" />
-                2. Environment Configurations (.env)
-              </h5>
-              <p>Add these environment secrets to your server context. Do not commit actual private keys to GitHub:</p>
-              <pre className="bg-slate-900 text-slate-100 p-4 rounded-xl font-mono text-xs overflow-x-auto leading-normal">
-{`# .env.example
-STRIPE_PUBLISHABLE_KEY=pk_live_...
-STRIPE_SECRET_KEY=sk_live_...
-STRIPE_WEBHOOK_SECRET=whsec_...`}
-              </pre>
-            </section>
-
-            <section className="space-y-3">
-              <h5 className="font-bold text-gray-900 flex items-center gap-1.5 text-base">
-                <ArrowRight size={18} className="text-indigo-600" />
-                3. Backend Express API Sample (`server.ts`)
-              </h5>
-              <p>This Express routing handles creation of checkout sessions using Stripe subscriptions. Place this code inside your server controller:</p>
-              <pre className="bg-slate-900 text-slate-100 p-4 rounded-xl font-mono text-xs overflow-x-auto leading-normal">
-{`import Stripe from 'stripe';
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  apiVersion: '2023-10-16' as any,
-});
-
-// Endpoint: Create Subscription Checkout Session
-app.post('/api/billing/create-checkout', async (req, res) => {
-  const { customerEmail, planType } = req.body;
-  
-  // Choose Price ID configured in your Stripe Dashboard
-  const priceId = planType === 'annual' 
-    ? 'price_1YearPrepay_ID' 
-    : 'price_1MonthRecurring_ID';
-
-  try {
-    const session = await stripe.checkout.sessions.create({
-      payment_method_types: ['card'],
-      customer_email: customerEmail,
-      line_items: [{ price: priceId, quantity: 1 }],
-      mode: 'subscription',
-      success_url: 'https://pico-pos.app/settings?session_id={CHECKOUT_SESSION_ID}',
-      cancel_url: 'https://pico-pos.app/settings?cancelled=true',
-    });
-    res.json({ url: session.url });
-  } catch (error: any) {
-    res.status(400).json({ error: error.message });
-  }
-});`}
-              </pre>
-            </section>
-
-            <section className="space-y-3">
-              <h5 className="font-bold text-gray-900 flex items-center gap-1.5 text-base">
-                <Lock size={18} className="text-indigo-600" />
-                4. Handling Stripe Webhooks for "Rent-to-Own" Syncing
-              </h5>
-              <p>
-                To track continuous monthly cycles, set up a webhook that receives Stripe events and increments the <code>subscriptionMonthsPaid</code> field in your cloud database:
-              </p>
-              <pre className="bg-slate-900 text-slate-100 p-4 rounded-xl font-mono text-xs overflow-x-auto leading-normal">
-{`// Endpoint: Stripe Webhook Listener
-app.post('/api/stripe-webhook', express.raw({ type: 'application/json' }), async (req, res) => {
-  const sig = req.headers['stripe-signature']!;
-  let event;
-
-  try {
-    event = stripe.webhooks.constructEvent(req.body, sig, process.env.STRIPE_WEBHOOK_SECRET!);
-  } catch (err: any) {
-    return res.status(400).send(\`Webhook Error: \${err.message}\`);
-  }
-
-  if (event.type === 'invoice.payment_succeeded') {
-    const invoice = event.data.object as any;
-    const subscriptionId = invoice.subscription;
-    
-    // 1. Fetch current customer from Database
-    const userProfile = await db.getUserByStripeId(invoice.customer);
-
-    // 2. Increment months paid counter
-    const updatedMonths = (userProfile.subscriptionMonthsPaid || 0) + 1;
-    
-    if (updatedMonths >= 12) {
-      // 3. Complete Rent-To-Own milestone: Cancel Stripe auto-renew, grant permanent license
-      await stripe.subscriptions.update(subscriptionId, { cancel_at_period_end: true });
-      await db.updateUserLicense(userProfile.id, { 
-        subscriptionStatus: 'owned', 
-        subscriptionMonthsPaid: 12 
-      });
-    } else {
-      await db.updateUserLicense(userProfile.id, { 
-        subscriptionStatus: 'monthly', 
-        subscriptionMonthsPaid: updatedMonths 
-      });
-    }
-  }
-
-  res.json({ received: true });
-});`}
-              </pre>
-            </section>
-          </div>
-        )}
-      </div>
     </div>
   );
 };

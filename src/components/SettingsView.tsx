@@ -319,7 +319,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({
                                 <option value="NPR">NPR (Nepalese Rupee - Rs.)</option>
                                 <option value="INR">INR (Indian Rupee - ₹)</option>
                                 <option value="EUR">EUR (Euro - €)</option>
-                                <option value="CUSTOM">Custom (직접 입력 / Custom Input)</option>
+                                <option value="CUSTOM">Custom (Custom Input)</option>
                               </select>
                            </div>
                            <div>
@@ -337,7 +337,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({
                         {!['USD', 'KRW', 'NPR', 'EUR', 'INR'].includes(storeProfile.currency) && (
                           <div className="bg-indigo-50/40 p-5 rounded-2xl border border-indigo-100 space-y-4 animate-in fade-in slide-in-from-top-2 duration-200">
                             <div className="flex items-center justify-between">
-                              <h4 className="text-sm font-black text-indigo-900">Custom Currency Settings (사용자 정의 화폐 설정)</h4>
+                              <h4 className="text-sm font-black text-indigo-900">Custom Currency Settings</h4>
                               <span className="text-[10px] bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full font-bold">Active: {storeProfile.currency}</span>
                             </div>
                             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
