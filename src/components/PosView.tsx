@@ -89,11 +89,28 @@ const PosView: React.FC<PosViewProps> = ({ tables, menu, onPlaceOrder, storeProf
   if (!selectedTableId) {
     return (
       <div className="h-full bg-slate-100 flex flex-col">
-        <div className="p-6 pb-2 shrink-0 flex justify-between items-end">
-           <div>
-              <h2 className="text-2xl font-bold text-gray-800">Floor View</h2>
-              <p className="text-gray-500">Select a table to start an order.</p>
-           </div>
+         <div className="p-6 pb-2 shrink-0 flex justify-between items-end">
+            <div>
+               <div className="flex items-center gap-2.5">
+                  <h2 className="text-2xl font-bold text-gray-800">Floor View</h2>
+                  {storeProfile.subscriptionStatus === 'owned' && (
+                     <span className="bg-gradient-to-r from-amber-500 to-yellow-500 text-white text-[10px] font-black px-2.5 py-0.5 rounded-full shadow-sm flex items-center gap-1 shrink-0">
+                       👑 LIFETIME LICENSE
+                     </span>
+                  )}
+                  {(storeProfile.subscriptionStatus === 'monthly' || storeProfile.subscriptionStatus === 'annual') && (
+                     <span className="bg-gradient-to-r from-indigo-500 to-violet-500 text-white text-[10px] font-black px-2.5 py-0.5 rounded-full shadow-sm flex items-center gap-1 shrink-0 animate-pulse">
+                       ✨ PRO ACTIVE
+                     </span>
+                  )}
+                  {(storeProfile.subscriptionStatus === 'none' || !storeProfile.subscriptionStatus) && (
+                     <span className="bg-slate-100 text-slate-500 text-[10px] font-bold px-2.5 py-0.5 rounded-full border border-slate-200 shrink-0">
+                       TRIAL MODE
+                     </span>
+                  )}
+               </div>
+               <p className="text-gray-500">Select a table to start an order.</p>
+            </div>
            <div className="bg-white px-3 py-1 rounded-full shadow-sm text-xs font-bold text-gray-500 flex items-center gap-2">
               <span className="w-2 h-2 rounded-full bg-white border-2 border-green-500"></span> Empty
               <span className="w-2 h-2 rounded-full bg-orange-100 border-2 border-orange-500 ml-2"></span> Occupied

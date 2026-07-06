@@ -38,7 +38,9 @@ const LoginView: React.FC<LoginViewProps> = ({ onLogin }) => {
           panNumber: '123-456-7890',
           settlementAccount: 'KR-BANK-001',
           logoIcon: 'coffee',
-          themeColor: 'bg-indigo-900'
+          themeColor: 'bg-indigo-900',
+          subscriptionStatus: 'none',
+          subscriptionMonthsPaid: 0
         };
       } else {
         // Default / Pico
@@ -50,7 +52,9 @@ const LoginView: React.FC<LoginViewProps> = ({ onLogin }) => {
           panNumber: '987-654-321',
           settlementAccount: 'US-BANK-999',
           logoIcon: 'cloud',
-          themeColor: 'bg-indigo-600'
+          themeColor: 'bg-indigo-600',
+          subscriptionStatus: 'none',
+          subscriptionMonthsPaid: 0
         };
       }
 

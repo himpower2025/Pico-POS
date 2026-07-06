@@ -1,7 +1,9 @@
 import React, { useState, useRef } from 'react';
-import { CreditCard, Wifi, Edit, Plus, Trash2, LayoutTemplate, Coffee, Printer, Bluetooth, Building2, PaintBucket, CloudSun } from 'lucide-react';
+import { CreditCard, Wifi, Edit, Plus, Trash2, LayoutTemplate, Coffee, Printer, Bluetooth, Building2, PaintBucket, CloudSun, ShieldAlert } from 'lucide-react';
 import { StoreProfile, MenuItem, Table } from '../types';
 import { formatCurrency } from '../lib/utils';
+import { LegalDocsView } from './LegalDocs';
+import { SubscriptionView } from './SubscriptionView';
 
 interface SettingsViewProps {
     storeProfile: StoreProfile;
@@ -12,7 +14,7 @@ interface SettingsViewProps {
     onUpdateTables: (t: Table[]) => void;
 }
 
-type Tab = 'profile' | 'menu' | 'floor' | 'hardware' | 'about';
+type Tab = 'profile' | 'menu' | 'floor' | 'hardware' | 'subscription' | 'legal' | 'about';
 
 const SettingsView: React.FC<SettingsViewProps> = ({ 
     storeProfile, onUpdateProfile, 
@@ -20,6 +22,73 @@ const SettingsView: React.FC<SettingsViewProps> = ({
     tables, onUpdateTables
 }) => {
   const [activeTab, setActiveTab] = useState<Tab>('profile');
+
+  // --- Custom Currency State ---
+  const PRESET_CURRENCIES = ['USD', 'KRW', 'NPR', 'EUR', 'INR'];
+  const isPresetCurrency = PRESET_CURRENCIES.includes(storeProfile.currency);
+
+  const [customCurrencyCode, setCustomCurrencyCode] = useState(() => {
+    return isPresetCurrency ? 'CAD' : storeProfile.currency;
+  });
+  const [customCurrencySymbol, setCustomCurrencySymbol] = useState(() => {
+    if (isPresetCurrency) return 'C$';
+    try {
+      const saved = localStorage.getItem('pico_custom_currencies');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed[storeProfile.currency]) return parsed[storeProfile.currency].symbol;
+      }
+    } catch (e) {
+      // ignore
+    }
+    return 'C$';
+  });
+  const [customCurrencyRate, setCustomCurrencyRate] = useState(() => {
+    if (isPresetCurrency) return 1.35;
+    try {
+      const saved = localStorage.getItem('pico_custom_currencies');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed[storeProfile.currency]) return parsed[storeProfile.currency].rate;
+      }
+    } catch (e) {
+      // ignore
+    }
+    return 1.35;
+  });
+  const [customCurrencyDecimals, setCustomCurrencyDecimals] = useState<number>(() => {
+    if (isPresetCurrency) return 2;
+    try {
+      const saved = localStorage.getItem('pico_custom_currencies');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed[storeProfile.currency]) return parsed[storeProfile.currency].decimals;
+      }
+    } catch (e) {
+      // ignore
+    }
+    return 2;
+  });
+
+  const handleSaveCustomCurrency = (code: string, symbol: string, rate: number, decimals: number) => {
+    const cleanCode = code.trim().toUpperCase() || 'CUSTOM';
+    const cleanSymbol = symbol.trim() || '$';
+    const cleanRate = Number(rate) || 1.0;
+    
+    try {
+      const saved = localStorage.getItem('pico_custom_currencies');
+      const parsed = saved ? JSON.parse(saved) : {};
+      parsed[cleanCode] = { rate: cleanRate, symbol: cleanSymbol, decimals };
+      localStorage.setItem('pico_custom_currencies', JSON.stringify(parsed));
+    } catch (e) {
+      console.error(e);
+    }
+
+    onUpdateProfile({
+      ...storeProfile,
+      currency: cleanCode
+    });
+  };
   
   // Menu Editor State
   const [editingItem, setEditingItem] = useState<Partial<MenuItem> | null>(null);
@@ -172,6 +241,18 @@ const SettingsView: React.FC<SettingsViewProps> = ({
                 Hardware
             </button>
             <button 
+                onClick={() => setActiveTab('subscription')}
+                className={`px-4 py-2 rounded-lg font-medium text-sm transition flex items-center gap-1 ${activeTab === 'subscription' ? 'bg-indigo-600 text-white' : 'text-gray-600 hover:bg-gray-100'}`}
+            >
+                Subscription
+            </button>
+            <button 
+                onClick={() => setActiveTab('legal')}
+                className={`px-4 py-2 rounded-lg font-medium text-sm transition flex items-center gap-1 ${activeTab === 'legal' ? 'bg-indigo-600 text-white' : 'text-gray-600 hover:bg-gray-100'}`}
+            >
+                Legal
+            </button>
+            <button 
                 onClick={() => setActiveTab('about')}
                 className={`px-4 py-2 rounded-lg font-medium text-sm transition ${activeTab === 'about' ? 'bg-indigo-600 text-white' : 'text-gray-600 hover:bg-gray-100'}`}
             >
@@ -221,14 +302,24 @@ const SettingsView: React.FC<SettingsViewProps> = ({
                            <div>
                               <label className="block text-sm font-medium text-gray-700 mb-2">Currency</label>
                               <select 
-                                value={storeProfile.currency}
-                                onChange={(e) => onUpdateProfile({...storeProfile, currency: e.target.value})}
-                                className="w-full px-4 py-3 rounded-xl border border-gray-200 bg-white"
+                                value={['USD', 'KRW', 'NPR', 'EUR', 'INR'].includes(storeProfile.currency) ? storeProfile.currency : 'CUSTOM'}
+                                onChange={(e) => {
+                                  const val = e.target.value;
+                                  if (val === 'CUSTOM') {
+                                    const code = customCurrencyCode || 'CUSTOM';
+                                    handleSaveCustomCurrency(code, customCurrencySymbol || '$', customCurrencyRate, customCurrencyDecimals);
+                                  } else {
+                                    onUpdateProfile({...storeProfile, currency: val});
+                                  }
+                                }}
+                                className="w-full px-4 py-3 rounded-xl border border-gray-200 bg-white font-medium focus:ring-2 focus:ring-indigo-500 outline-none"
                               >
-                                <option>USD</option>
-                                <option>KRW</option>
-                                <option>NPR</option>
-                                <option>EUR</option>
+                                <option value="USD">USD (US Dollar - $)</option>
+                                <option value="KRW">KRW (Korean Won - ₩)</option>
+                                <option value="NPR">NPR (Nepalese Rupee - Rs.)</option>
+                                <option value="INR">INR (Indian Rupee - ₹)</option>
+                                <option value="EUR">EUR (Euro - €)</option>
+                                <option value="CUSTOM">Custom (직접 입력 / Custom Input)</option>
                               </select>
                            </div>
                            <div>
@@ -237,10 +328,83 @@ const SettingsView: React.FC<SettingsViewProps> = ({
                                     type="number" 
                                     value={storeProfile.taxRate}
                                     onChange={(e) => onUpdateProfile({...storeProfile, taxRate: Number(e.target.value)})}
-                                    className="w-full px-4 py-3 rounded-xl border border-gray-200"
+                                    className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-indigo-500 outline-none"
                                 />
                            </div>
                         </div>
+
+                        {/* Custom Currency Settings Form */}
+                        {!['USD', 'KRW', 'NPR', 'EUR', 'INR'].includes(storeProfile.currency) && (
+                          <div className="bg-indigo-50/40 p-5 rounded-2xl border border-indigo-100 space-y-4 animate-in fade-in slide-in-from-top-2 duration-200">
+                            <div className="flex items-center justify-between">
+                              <h4 className="text-sm font-black text-indigo-900">Custom Currency Settings (사용자 정의 화폐 설정)</h4>
+                              <span className="text-[10px] bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full font-bold">Active: {storeProfile.currency}</span>
+                            </div>
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                              <div>
+                                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Currency Code</label>
+                                <input 
+                                  type="text"
+                                  placeholder="e.g. CAD, GBP, AUD"
+                                  value={customCurrencyCode}
+                                  onChange={(e) => {
+                                    const code = e.target.value.toUpperCase().slice(0, 8);
+                                    setCustomCurrencyCode(code);
+                                    handleSaveCustomCurrency(code, customCurrencySymbol, customCurrencyRate, customCurrencyDecimals);
+                                  }}
+                                  className="w-full px-3 py-2.5 text-sm rounded-lg border border-gray-200 bg-white font-mono focus:ring-2 focus:ring-indigo-500 outline-none"
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Currency Symbol</label>
+                                <input 
+                                  type="text"
+                                  placeholder="e.g. C$, £, A$"
+                                  value={customCurrencySymbol}
+                                  onChange={(e) => {
+                                    const sym = e.target.value;
+                                    setCustomCurrencySymbol(sym);
+                                    handleSaveCustomCurrency(customCurrencyCode, sym, customCurrencyRate, customCurrencyDecimals);
+                                  }}
+                                  className="w-full px-3 py-2.5 text-sm rounded-lg border border-gray-200 bg-white focus:ring-2 focus:ring-indigo-500 outline-none"
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Exchange Rate (vs 1 USD)</label>
+                                <input 
+                                  type="number"
+                                  step="0.0001"
+                                  placeholder="e.g. 1.35"
+                                  value={customCurrencyRate}
+                                  onChange={(e) => {
+                                    const rate = Number(e.target.value) || 1.0;
+                                    setCustomCurrencyRate(rate);
+                                    handleSaveCustomCurrency(customCurrencyCode, customCurrencySymbol, rate, customCurrencyDecimals);
+                                  }}
+                                  className="w-full px-3 py-2.5 text-sm rounded-lg border border-gray-200 bg-white font-mono focus:ring-2 focus:ring-indigo-500 outline-none"
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Decimal Places</label>
+                                <select 
+                                  value={customCurrencyDecimals}
+                                  onChange={(e) => {
+                                    const dec = Number(e.target.value);
+                                    setCustomCurrencyDecimals(dec);
+                                    handleSaveCustomCurrency(customCurrencyCode, customCurrencySymbol, customCurrencyRate, dec);
+                                  }}
+                                  className="w-full px-3 py-2.5 text-sm rounded-lg border border-gray-200 bg-white focus:ring-2 focus:ring-indigo-500 outline-none"
+                                >
+                                  <option value={0}>0 (No decimals - e.g. ₩)</option>
+                                  <option value={2}>2 (Two decimals - e.g. $)</option>
+                                </select>
+                              </div>
+                            </div>
+                            <p className="text-xs text-indigo-700/80 leading-relaxed">
+                              Configure any global currency! The exchange rate converts base values, and the symbol is rendered across the POS layout, receipt headers, and history grids.
+                            </p>
+                          </div>
+                        )}
 
                          {/* Theme Customization */}
                          <div>
@@ -585,6 +749,29 @@ const SettingsView: React.FC<SettingsViewProps> = ({
                             </div>
                         </div>
                     </div>
+                </div>
+            )}
+
+            {/* LEGAL TAB */}
+            {activeTab === 'legal' && (
+                <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2">
+                    <div className="flex justify-between items-center">
+                        <div>
+                            <h2 className="text-xl font-bold text-gray-800">Legal & Compliance</h2>
+                            <p className="text-sm text-gray-500">Essential legal documents required for official application registration and licensing compliance.</p>
+                        </div>
+                    </div>
+                    <LegalDocsView />
+                </div>
+            )}
+
+            {/* SUBSCRIPTION TAB */}
+            {activeTab === 'subscription' && (
+                <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2">
+                    <SubscriptionView 
+                        storeProfile={storeProfile} 
+                        onUpdateProfile={onUpdateProfile} 
+                    />
                 </div>
             )}
 

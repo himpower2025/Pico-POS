@@ -41,6 +41,10 @@ export interface StoreProfile {
   settlementAccount: string; // New: Bank or Wallet ID for settlement
   logoIcon: 'coffee' | 'mountain' | 'cloud'; // Simple icon selection for demo
   themeColor: string;
+  subscriptionStatus?: 'none' | 'monthly' | 'annual' | 'owned';
+  subscriptionMonthsPaid?: number; // Tracker up to 12 for Rent-to-Own
+  subscriptionStartDate?: string;
+  subscriptionNextBillingDate?: string;
 }
 
 export interface SalesData {
