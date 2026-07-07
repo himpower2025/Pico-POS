@@ -220,6 +220,32 @@ export const SubscriptionView: React.FC<SubscriptionViewProps> = ({
             )}
           </p>
         </div>
+
+        {/* 7일 무료 체험 및 데이터 보관 정책 안내 (사장님 요청사항 추가) */}
+        {currentStatus === 'none' && (
+          <div className="bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200/80 rounded-2xl p-5 flex flex-col md:flex-row items-start gap-4 animate-in slide-in-from-top-2 duration-300">
+            <div className="p-3 bg-amber-500 text-white rounded-xl shadow-md shadow-amber-500/20">
+              <Sparkles size={24} />
+            </div>
+            <div className="space-y-1.5 min-w-0 flex-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <h4 className="text-sm font-black text-amber-950 uppercase tracking-wide">Pico POS 7일 무료 체험 (7-Day Free Trial)</h4>
+                <span className="text-[10px] bg-amber-600 text-white px-2 py-0.5 rounded-full font-black animate-pulse">ACTIVE</span>
+              </div>
+              <p className="text-xs text-amber-900 leading-relaxed">
+                현재 가입 즉시 시작되는 <strong>7일 무료 체험 기간</strong>이 적용 중입니다. 카드 등록 없이도 모든 결제 및 관리 기능을 제한 없이 테스트하실 수 있습니다.
+              </p>
+              <div className="pt-2 border-t border-amber-200/50 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 text-[11px] text-amber-800">
+                <span className="flex items-center gap-1">
+                  🛡️ <strong>데이터 보관 보장:</strong> 체험 기간 동안 입력하신 소중한 메뉴 및 판매 내역은 안전하게 클라우드에 임시 보관됩니다.
+                </span>
+                <span className="flex items-center gap-1 font-bold text-red-600">
+                  ⚠️ 미구독 시 7일 유예 후 자동 영구 삭제
+                </span>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Main Checkout Area */}
@@ -255,7 +281,7 @@ export const SubscriptionView: React.FC<SubscriptionViewProps> = ({
                   </p>
                 </div>
                 <div>
-                  <span className="text-2xl font-black text-slate-900">$19.99</span>
+                  <span className="text-2xl font-black text-slate-900">$21.99</span>
                   <span className="text-xs text-gray-500 font-bold"> / month</span>
                 </div>
               </div>
@@ -292,132 +318,121 @@ export const SubscriptionView: React.FC<SubscriptionViewProps> = ({
                   </p>
                 </div>
                 <div>
-                  <span className="text-2xl font-black text-slate-900">$199.99</span>
+                  <span className="text-2xl font-black text-slate-900">$219.99</span>
                   <span className="text-xs text-gray-500 font-bold"> / year</span>
-                  <div className="text-[10px] text-emerald-600 font-bold mt-1">Equivalent to $16.66/month (Save $40)</div>
+                  <div className="text-[10px] text-emerald-600 font-bold mt-1">Equivalent to $18.33/month (Save $44)</div>
                 </div>
               </div>
             </div>
           </div>
 
-          {/* Right Column: Checkout Form / Credit Card */}
+          {/* Right Column: Google Play & App Store In-App Purchase Simulator */}
           <div className="lg:col-span-7 space-y-6">
-            <h3 className="text-lg font-bold text-gray-800">Secure Billing Details</h3>
+            <div className="flex justify-between items-center">
+              <h3 className="text-lg font-bold text-gray-800">App Store In-App Purchase</h3>
+              <div className="text-xs bg-slate-100 text-slate-600 px-2.5 py-1 rounded-lg font-bold">
+                Hybrid App SDK Integrated
+              </div>
+            </div>
             
-            <form onSubmit={handlePaymentSubmit} className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm space-y-6">
-              
-              {/* Virtual Credit Card View */}
-              <div className="bg-gradient-to-br from-slate-900 to-slate-800 text-white rounded-2xl p-6 aspect-[1.586/1] shadow-xl relative flex flex-col justify-between overflow-hidden">
-                <div className="flex justify-between items-start">
-                  <div>
-                    <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest">Pico POS Subscriber Card</p>
-                    <span className="text-xs font-mono font-medium text-indigo-300">{selectedPlan === 'annual' ? 'Annual Plan Upgrade' : 'Monthly Plan'}</span>
-                  </div>
-                  <div className="h-8 flex items-center justify-end font-black italic text-lg tracking-tight text-white/80">
-                    {cardType !== 'Unknown' ? cardType : 'Pico'}
-                  </div>
-                </div>
-
-                <div className="my-2">
-                  <div className="h-9 w-12 bg-amber-200/80 rounded-lg shadow-inner flex items-center justify-center overflow-hidden border border-amber-300">
-                    <div className="grid grid-cols-3 gap-0.5 w-full h-full p-1 opacity-40">
-                      <div className="border border-slate-950"></div>
-                      <div className="border border-slate-950"></div>
-                      <div className="border border-slate-950"></div>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="space-y-4">
-                  {/* Card Number Display */}
-                  <div className="text-lg md:text-xl font-mono tracking-[0.2em] font-medium text-slate-100">
-                    {cardNumber || '•••• •••• •••• ••••'}
-                  </div>
-
-                  <div className="flex justify-between items-end text-xs font-mono">
-                    <div>
-                      <p className="text-[8px] text-slate-400 uppercase tracking-wider mb-0.5">Cardholder</p>
-                      <p className="truncate uppercase max-w-[180px]">{cardName || 'YOUR FULL NAME'}</p>
-                    </div>
-                    <div>
-                      <p className="text-[8px] text-slate-400 uppercase tracking-wider mb-0.5">Expires</p>
-                      <p>{cardExpiry || 'MM/YY'}</p>
-                    </div>
-                    <div>
-                      <p className="text-[8px] text-slate-400 uppercase tracking-wider mb-0.5">CVV</p>
-                      <p>{'•'.repeat(cardCvv.length) || '•••'}</p>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Background watermarks */}
-                <div className="absolute right-0 bottom-0 w-32 h-32 bg-indigo-500/10 rounded-full translate-x-8 translate-y-8 pointer-events-none"></div>
+            <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm space-y-6">
+              {/* Informational Banner about Card-free IAP */}
+              <div className="bg-blue-50/50 border border-blue-100 p-4 rounded-xl space-y-2">
+                <h4 className="text-xs font-black text-blue-900 uppercase tracking-wider flex items-center gap-1.5">
+                  <Sparkles size={14} className="text-blue-500" /> Nepal Local Carrier & Wallet billing
+                </h4>
+                <p className="text-[11px] text-blue-800 leading-relaxed">
+                  <strong>No international credit card required!</strong> By choosing Google Play or Apple App Store In-App Purchase, your Nepalese clients can easily pay for subscriptions using <strong>local wallets (eSewa, Khalti)</strong>, <strong>carrier billing (Ncell / NTC)</strong>, or <strong>prepaid Gift Cards</strong> purchased with cash.
+                </p>
               </div>
 
-              {/* Form Input fields */}
-              <div className="space-y-4 text-sm">
-                <div>
-                  <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Cardholder Name</label>
-                  <input 
-                    type="text" 
-                    required
-                    placeholder="e.g. John Doe"
-                    value={cardName}
-                    onChange={e => setCardName(e.target.value)}
-                    className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-indigo-500 outline-none transition"
-                  />
+              {/* Platform Selector Tabs */}
+              <div>
+                <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2.5">
+                  Choose Native Platform Store
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCardName('Google Play');
+                      setCardNumber('google');
+                    }}
+                    className={`p-3 rounded-xl border-2 font-bold text-xs flex items-center justify-center gap-2 transition ${
+                      cardNumber === 'google' || cardNumber === ''
+                        ? 'border-indigo-600 bg-indigo-50/20 text-indigo-950'
+                        : 'border-gray-100 bg-gray-50/50 text-gray-500 hover:border-gray-200'
+                    }`}
+                  >
+                    <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M3.609 1.814L13.783 12 3.609 22.186a2.204 2.204 0 01-.601-1.503V3.317c0-.574.22-1.096.601-1.503zM14.973 13.19l3.056 3.056L5.353 22.95l9.62-9.76zM14.973 10.81l9.62-9.76-12.676 6.704 3.056 3.056zM14.49 12.707l2.846-2.846 4.103 2.139a1.69 1.69 0 010 2.915l-4.103 2.138-2.846-2.846z" fill="currentColor" />
+                    </svg>
+                    Google Play (Android Tablet)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCardName('Apple App Store');
+                      setCardNumber('apple');
+                    }}
+                    className={`p-3 rounded-xl border-2 font-bold text-xs flex items-center justify-center gap-2 transition ${
+                      cardNumber === 'apple'
+                        ? 'border-indigo-600 bg-indigo-50/20 text-indigo-950'
+                        : 'border-gray-100 bg-gray-50/50 text-gray-500 hover:border-gray-200'
+                    }`}
+                  >
+                    <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.81-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M15.97 4.17c.66-.81 1.11-1.93.99-3.06-1 .04-2.21.67-2.93 1.49-.62.69-1.16 1.84-1.01 2.96 1.12.09 2.27-.57 2.95-1.39z" />
+                    </svg>
+                    Apple App Store (iPad)
+                  </button>
                 </div>
+              </div>
 
-                <div>
-                  <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Card Number</label>
-                  <div className="relative flex items-center">
-                    <input 
-                      type="text" 
-                      required
-                      placeholder="4111 1111 1111 1111"
-                      value={cardNumber}
-                      onChange={handleCardNumberChange}
-                      className="w-full pl-11 pr-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-indigo-500 outline-none transition font-mono"
-                    />
-                    <CreditCard className="absolute left-4 text-gray-400" size={18} />
+              {/* Native simulated billing selector */}
+              <div className="space-y-3">
+                <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest">
+                  Simulated Billing Method (Nepal Compliant)
+                </label>
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-100">
+                    <div className="flex items-center gap-3">
+                      <div className="p-1.5 bg-emerald-100 text-emerald-700 rounded-lg text-[10px] font-black uppercase">
+                        Wallet
+                      </div>
+                      <div>
+                        <p className="text-xs font-bold text-slate-800">Nepal Mobile Wallets (eSewa / Khalti)</p>
+                        <p className="text-[10px] text-slate-500">Deducts instantly via regional App Store linkage</p>
+                      </div>
+                    </div>
+                    <span className="text-[10px] bg-emerald-50 text-emerald-600 px-2 py-0.5 rounded font-bold">Supported</span>
                   </div>
-                </div>
 
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Expiration Date</label>
-                    <input 
-                      type="text" 
-                      required
-                      placeholder="MM/YY"
-                      value={cardExpiry}
-                      onChange={handleExpiryChange}
-                      className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-indigo-500 outline-none transition font-mono text-center"
-                    />
+                  <div className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-100">
+                    <div className="flex items-center gap-3">
+                      <div className="p-1.5 bg-blue-100 text-blue-700 rounded-lg text-[10px] font-black uppercase">
+                        Carrier
+                      </div>
+                      <div>
+                        <p className="text-xs font-bold text-slate-800">Carrier Airtime Billing (Ncell / NTC)</p>
+                        <p className="text-[10px] text-slate-500">Charge is added to mobile balance or postpaid bill</p>
+                      </div>
+                    </div>
+                    <span className="text-[10px] bg-emerald-50 text-emerald-600 px-2 py-0.5 rounded font-bold">Supported</span>
                   </div>
-                  <div>
-                    <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">CVV / Security Code</label>
-                    <input 
-                      type="password" 
-                      required
-                      placeholder="123"
-                      value={cardCvv}
-                      onChange={handleCvvChange}
-                      className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-indigo-500 outline-none transition font-mono text-center"
-                    />
-                  </div>
-                </div>
 
-                <div>
-                  <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Billing Postal / ZIP Code</label>
-                  <input 
-                    type="text" 
-                    required
-                    placeholder="e.g. 10001"
-                    value={zipCode}
-                    onChange={e => setZipCode(e.target.value.replace(/[^a-z0-9]/gi, '').slice(0, 8))}
-                    className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-indigo-500 outline-none transition font-mono"
-                  />
+                  <div className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-100">
+                    <div className="flex items-center gap-3">
+                      <div className="p-1.5 bg-purple-100 text-purple-700 rounded-lg text-[10px] font-black uppercase">
+                        GiftCard
+                      </div>
+                      <div>
+                        <p className="text-xs font-bold text-slate-800">Store Gift Cards / Redemptions</p>
+                        <p className="text-[10px] text-slate-500">Enter code bought at physical retailers</p>
+                      </div>
+                    </div>
+                    <span className="text-[10px] bg-emerald-50 text-emerald-600 px-2 py-0.5 rounded font-bold">Supported</span>
+                  </div>
                 </div>
               </div>
 
@@ -425,30 +440,35 @@ export const SubscriptionView: React.FC<SubscriptionViewProps> = ({
               <div className="pt-2 border-t border-gray-100 flex items-center justify-between text-xs text-gray-500">
                 <span className="flex items-center gap-1">
                   <Lock size={12} className="text-emerald-500" />
-                  SSL Secured & Compliant
+                  Native Sandbox Verified
                 </span>
-                <span>Powered by Stripe Demo API</span>
+                <span>{cardNumber === 'apple' ? 'Apple App Store Server v2' : 'Google Play Billing Library v6'}</span>
               </div>
 
-              {/* Submit button */}
+              {/* Trigger In-App Purchase Button */}
               <button
-                type="submit"
+                type="button"
+                onClick={handlePaymentSubmit}
                 disabled={isProcessing}
-                className="w-full bg-slate-900 hover:bg-black text-white font-bold py-4 rounded-xl flex items-center justify-center gap-2 shadow-lg disabled:opacity-50 transition"
+                className={`w-full text-white font-bold py-4 rounded-xl flex items-center justify-center gap-2 shadow-lg disabled:opacity-50 transition active:scale-[0.99] ${
+                  cardNumber === 'apple' 
+                    ? 'bg-slate-900 hover:bg-black' 
+                    : 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-100'
+                }`}
               >
                 {isProcessing ? (
                   <>
                     <RefreshCw size={18} className="animate-spin" />
-                    Processing Payment securely via Stripe...
+                    Connecting to {cardNumber === 'apple' ? 'App Store' : 'Google Play'} Dialog...
                   </>
                 ) : (
                   <>
-                    <ShieldCheck size={18} />
-                    Confirm & Activate Sub - {selectedPlan === 'annual' ? '$199.99' : '$19.99'}
+                    <Zap size={18} className="text-yellow-300" />
+                    Purchase with {cardNumber === 'apple' ? 'Apple App Store' : 'Google Play Store'} - {selectedPlan === 'annual' ? '$219.99' : '$21.99'}
                   </>
                 )}
               </button>
-            </form>
+            </div>
           </div>
         </div>
       )}
@@ -463,7 +483,7 @@ export const SubscriptionView: React.FC<SubscriptionViewProps> = ({
           <div className="space-y-2">
             <h3 className="text-2xl font-black text-emerald-950">Subscription Successfully Activated!</h3>
             <p className="text-emerald-800 text-sm">
-              Thank you! Your payment of <strong>{selectedPlan === 'annual' ? '$199.99' : '$19.99'}</strong> has been processed successfully via Stripe.
+              Thank you! Your payment of <strong>{selectedPlan === 'annual' ? '$219.99' : '$21.99'}</strong> has been processed successfully via native In-App Purchase.
             </p>
           </div>
 
