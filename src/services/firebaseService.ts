@@ -16,8 +16,17 @@ import {
   QueryDocumentSnapshot
 } from 'firebase/firestore';
 import { MenuItem, Order, StoreProfile } from '../types';
-// @ts-ignore
-import firebaseConfig from '../../firebase-applet-config.json';
+// Firebase configuration with environment variable support and default fallbacks for AI Studio/local development
+const firebaseConfig = {
+  projectId: (import.meta as any).env.VITE_FIREBASE_PROJECT_ID || "himpower-2b10b",
+  appId: (import.meta as any).env.VITE_FIREBASE_APP_ID || "1:877849012676:web:d841108fa16ad8d2cadc91",
+  apiKey: (import.meta as any).env.VITE_FIREBASE_API_KEY || "AIzaSyBoZYams0NPnz4PQwmo65lZjECskbYdUpw",
+  authDomain: (import.meta as any).env.VITE_FIREBASE_AUTH_DOMAIN || "himpower-2b10b.firebaseapp.com",
+  firestoreDatabaseId: (import.meta as any).env.VITE_FIREBASE_DATABASE_ID || "ai-studio-picoposbyhimpowe-63fcd72d-cd61-44bb-8ac6-eb9312bd69a4",
+  storageBucket: (import.meta as any).env.VITE_FIREBASE_STORAGE_BUCKET || "himpower-2b10b.firebasestorage.app",
+  messagingSenderId: (import.meta as any).env.VITE_FIREBASE_MESSAGING_SENDER_ID || "877849012676",
+  measurementId: (import.meta as any).env.VITE_FIREBASE_MEASUREMENT_ID || "",
+};
 
 // Initialize Firebase with persistent local offline cache enabled automatically
 const app = initializeApp(firebaseConfig);
@@ -25,7 +34,7 @@ const db = initializeFirestore(app, {
   localCache: persistentLocalCache({
     tabManager: persistentMultipleTabManager()
   })
-});
+}, firebaseConfig.firestoreDatabaseId);
 
 // A unique ID or email to partition store data securely
 const getStoreSlug = (profile: StoreProfile) => {
