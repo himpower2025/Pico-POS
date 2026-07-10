@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { StoreProfile } from '../types';
 import { CloudSun, Lock, Mail, ArrowRight, Sparkles, BarChart3 } from 'lucide-react';
+import { loadStoreProfileFromFirebase, saveStoreProfileToFirebase } from '../services/firebaseService';
 
 interface LoginViewProps {
   onLogin: (profile: StoreProfile) => void;
@@ -18,49 +19,53 @@ const LoginView: React.FC<LoginViewProps> = ({ onLogin }) => {
 
   const handleGoogleLogin = () => {
     // Simulate Google Login flow
-    processLogin('google-user');
+    processLogin('google-user@pico.app');
   };
 
-  const processLogin = (userEmail: string) => {
+  const processLogin = async (userEmail: string) => {
     setIsLoading(true);
 
-    // Simulate Network Request
-    setTimeout(() => {
-      let profile: StoreProfile;
-
-      // Simulation logic based on user
-      if (userEmail.includes('demo')) {
+    try {
+      // Load real store profile from Firebase
+      let profile = await loadStoreProfileFromFirebase(userEmail);
+      
+      if (!profile) {
+        // Create new default profile on Firebase for first-time login
+        const isDemo = userEmail.includes('demo');
         profile = {
-          name: 'Blue Bottle Demo',
-          location: 'Gangnam, Seoul',
-          currency: 'KRW',
-          taxRate: 10,
-          panNumber: '123-456-7890',
-          settlementAccount: 'KR-BANK-001',
-          logoIcon: 'coffee',
-          themeColor: 'bg-indigo-900',
+          name: isDemo ? 'Blue Bottle Demo' : 'Pico Cafe',
+          location: isDemo ? 'Gangnam, Seoul' : 'Global Branch',
+          currency: isDemo ? 'KRW' : 'USD',
+          taxRate: isDemo ? 10 : 8,
+          panNumber: isDemo ? '123-456-7890' : '987-654-321',
+          settlementAccount: isDemo ? 'KR-BANK-001' : 'US-BANK-999',
+          logoIcon: isDemo ? 'coffee' : 'cloud',
+          themeColor: isDemo ? 'bg-indigo-900' : 'bg-indigo-600',
           subscriptionStatus: 'none',
           subscriptionMonthsPaid: 0
         };
-      } else {
-        // Default / Pico
-        profile = {
-          name: 'Pico Cafe',
-          location: 'Global Branch',
-          currency: 'USD',
-          taxRate: 8,
-          panNumber: '987-654-321',
-          settlementAccount: 'US-BANK-999',
-          logoIcon: 'cloud',
-          themeColor: 'bg-indigo-600',
-          subscriptionStatus: 'none',
-          subscriptionMonthsPaid: 0
-        };
+        await saveStoreProfileToFirebase(profile);
       }
 
       onLogin(profile);
+    } catch (err) {
+      console.error('[Firebase Login] Error loading profile, using default:', err);
+      // Failover to temporary local store profile if network fails
+      onLogin({
+        name: 'Pico Cafe',
+        location: 'Global Branch',
+        currency: 'USD',
+        taxRate: 8,
+        panNumber: '987-654-321',
+        settlementAccount: 'US-BANK-999',
+        logoIcon: 'cloud',
+        themeColor: 'bg-indigo-600',
+        subscriptionStatus: 'none',
+        subscriptionMonthsPaid: 0
+      });
+    } finally {
       setIsLoading(false);
-    }, 1500);
+    }
   };
 
   return (

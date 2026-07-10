@@ -1,11 +1,22 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { AppMode, Order, Table, MenuItem, OrderItem, StoreProfile } from './types';
 import PosView from './components/PosView';
 import DashboardView from './components/DashboardView';
 import SettingsView from './components/SettingsView';
 import ReceiptModal from './components/ReceiptModal';
 import LoginView from './components/LoginView';
-import { LayoutGrid, MonitorPlay, LogOut, Settings, MountainSnow, CloudSun, Coffee } from 'lucide-react';
+import { LayoutGrid, MonitorPlay, LogOut, Settings, MountainSnow, CloudSun, Coffee, Loader2 } from 'lucide-react';
+import { 
+  syncMenuWithCache, 
+  updateServerMenuItem, 
+  deleteServerMenuItem, 
+  placeFirebaseOrder, 
+  refundFirebaseOrder, 
+  getDetailedOrders, 
+  syncTablesWithFirebase, 
+  saveTablesToFirebase, 
+  saveStoreProfileToFirebase 
+} from './services/firebaseService';
 
 // Mock Initial Data (Global Currency Prices & Images)
 const INITIAL_MENU: MenuItem[] = [
@@ -125,13 +136,63 @@ const App: React.FC = () => {
   const [menu, setMenu] = useState<MenuItem[]>(INITIAL_MENU);
   const [lastOrder, setLastOrder] = useState<Order | null>(null);
   const [posKey, setPosKey] = useState(0);
+  const [isSyncing, setIsSyncing] = useState(false);
+
+  // Load cloud data upon login
+  useEffect(() => {
+    if (!storeProfile) return;
+
+    const loadCloudData = async () => {
+      setIsSyncing(true);
+      try {
+        // 1. Sync menu using Cache-First strategy (Strategy 1)
+        const syncedMenu = await syncMenuWithCache(storeProfile, INITIAL_MENU);
+        setMenu(syncedMenu);
+
+        // 2. Sync layout tables from cloud
+        const syncedTables = await syncTablesWithFirebase(storeProfile, INITIAL_TABLES);
+        setTables(syncedTables);
+
+        // 3. Load all transaction receipts from cloud
+        const loadedOrders = await getDetailedOrders(storeProfile);
+        setOrders(loadedOrders);
+      } catch (err) {
+        console.error('[Firebase Sync Error]', err);
+      } finally {
+        setIsSyncing(false);
+      }
+    };
+
+    loadCloudData();
+  }, [storeProfile]);
 
   // If not logged in, show Login View
   if (!storeProfile) {
     return <LoginView onLogin={(profile) => setStoreProfile(profile)} />;
   }
 
-  const handlePlaceOrder = (tableId: number, items: OrderItem[], total: number) => {
+  // If syncing metadata, show a beautiful branded cloud loader
+  if (isSyncing) {
+    return (
+      <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center text-white p-4">
+        <div className="relative flex flex-col items-center">
+          <div className="p-5 bg-white/5 rounded-3xl border border-white/10 shadow-2xl backdrop-blur-md mb-6 animate-pulse">
+            <CloudSun size={48} className="text-indigo-400 animate-bounce" />
+          </div>
+          <h2 className="text-xl font-black tracking-tight mb-2">Syncing with Pico Cloud...</h2>
+          <p className="text-xs text-slate-400 max-w-xs text-center leading-relaxed">
+            Please wait while we load your menus, tables, and daily aggregated summaries securely.
+          </p>
+          <div className="mt-6 flex items-center gap-2 px-4 py-2 bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 rounded-full text-[10px] font-bold uppercase tracking-widest">
+            <Loader2 size={12} className="animate-spin" />
+            Optimized Cache Mode
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const handlePlaceOrder = async (tableId: number, items: OrderItem[], total: number) => {
     const newOrder: Order = {
       id: crypto.randomUUID(),
       tableId,
@@ -141,24 +202,73 @@ const App: React.FC = () => {
       status: 'completed'
     };
 
-    // 1. Add to Orders
-    setOrders(prev => [...prev, newOrder]);
+    // 1. Prepend order to local state
+    setOrders(prev => [newOrder, ...prev]);
     
-    // 2. Free up the table
-    setTables(prev => prev.map(t => 
-        t.id === tableId ? { ...t, status: 'empty' } : t
-    ));
+    // 2. Free up the table locally & sync to layout db
+    const updatedTables: Table[] = tables.map(t => 
+        t.id === tableId ? { ...t, status: 'empty' as const } : t
+    );
+    setTables(updatedTables);
+    await saveTablesToFirebase(storeProfile, updatedTables);
 
-    // 3. Deduct Stock from Menu
-    setMenu(prevMenu => prevMenu.map(menuItem => {
+    // 3. Deduct Stock from Menu locally & sync delta changed items to cloud
+    const updatedMenu = menu.map(menuItem => {
         const orderedItem = items.find(i => i.id === menuItem.id);
         if (orderedItem) {
-            return { ...menuItem, stock: Math.max(0, menuItem.stock - orderedItem.quantity) };
+            const updatedItem = { ...menuItem, stock: Math.max(0, menuItem.stock - orderedItem.quantity) };
+            updateServerMenuItem(storeProfile, updatedItem); // Sync specific changed item
+            return updatedItem;
         }
         return menuItem;
-    }));
+    });
+    setMenu(updatedMenu);
+
+    // 4. Save order & atomically increment daily statistics (Strategy 3)
+    await placeFirebaseOrder(storeProfile, newOrder, menu);
 
     setLastOrder(newOrder);
+  };
+
+  const handleUpdateOrders = async (newOrders: Order[]) => {
+    // Detect if an order status is marked as refunded in DashboardView
+    const refunded = newOrders.find(
+      n => n.status === 'refunded' && orders.find(o => o.id === n.id)?.status === 'completed'
+    );
+
+    if (refunded) {
+      await refundFirebaseOrder(storeProfile, refunded, menu);
+    }
+    setOrders(newOrders);
+  };
+
+  const handleUpdateProfile = async (newProfile: StoreProfile) => {
+    setStoreProfile(newProfile);
+    await saveStoreProfileToFirebase(newProfile);
+  };
+
+  const handleUpdateMenu = async (newMenu: MenuItem[]) => {
+    setMenu(newMenu);
+    
+    // Deleted items sync
+    const deleted = menu.filter(item => !newMenu.some(n => n.id === item.id));
+    for (const d of deleted) {
+      await deleteServerMenuItem(storeProfile, d.id);
+    }
+
+    // Created or edited items sync
+    const updated = newMenu.filter(n => {
+      const orig = menu.find(o => o.id === n.id);
+      return !orig || JSON.stringify(orig) !== JSON.stringify(n);
+    });
+    for (const u of updated) {
+      await updateServerMenuItem(storeProfile, u);
+    }
+  };
+
+  const handleUpdateTables = async (newTables: Table[]) => {
+    setTables(newTables);
+    await saveTablesToFirebase(storeProfile, newTables);
   };
 
   const handleLogoClick = () => {
@@ -187,7 +297,7 @@ const App: React.FC = () => {
         return (
           <DashboardView 
             orders={orders}
-            onUpdateOrders={setOrders} // Pass setter for refunds
+            onUpdateOrders={handleUpdateOrders} // Intercept order status updates (refunds)
             menu={menu}
             storeProfile={storeProfile}
           />
@@ -196,11 +306,11 @@ const App: React.FC = () => {
         return (
           <SettingsView 
             storeProfile={storeProfile} 
-            onUpdateProfile={setStoreProfile}
+            onUpdateProfile={handleUpdateProfile}
             menu={menu}
-            onUpdateMenu={setMenu}
+            onUpdateMenu={handleUpdateMenu}
             tables={tables}
-            onUpdateTables={setTables}
+            onUpdateTables={handleUpdateTables}
           />
         );
       default:
