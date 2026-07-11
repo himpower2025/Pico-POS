@@ -32,6 +32,15 @@ export interface Table {
   currentOrderId?: string;
 }
 
+export interface AppNotification {
+  id: string;
+  title: string;
+  message: string;
+  type: 'order' | 'stock' | 'system' | 'success';
+  timestamp: Date;
+  read: boolean;
+}
+
 export interface StoreProfile {
   name: string;
   location: string;

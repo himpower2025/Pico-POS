@@ -1,11 +1,16 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { AppMode, Order, Table, MenuItem, OrderItem, StoreProfile } from './types';
+import { AppMode, Order, Table, MenuItem, OrderItem, StoreProfile, AppNotification } from './types';
 import PosView from './components/PosView';
 import DashboardView from './components/DashboardView';
 import SettingsView from './components/SettingsView';
 import ReceiptModal from './components/ReceiptModal';
 import LoginView from './components/LoginView';
-import { LayoutGrid, MonitorPlay, LogOut, Settings, MountainSnow, CloudSun, Coffee, Loader2 } from 'lucide-react';
+import { 
+  LayoutGrid, MonitorPlay, LogOut, Settings, MountainSnow, 
+  CloudSun, Coffee, Loader2, Bell, BellRing, CheckCheck, 
+  Trash2, AlertTriangle, CheckCircle2, ShoppingBag, X, Info 
+} from 'lucide-react';
+import { playDingDong, playWarningSound, playSuccessSound } from './utils/sound';
 import { 
   syncMenuWithCache, 
   updateServerMenuItem, 
@@ -139,6 +144,30 @@ const App: React.FC = () => {
   const [isSyncing, setIsSyncing] = useState(false);
   const hasLoadedRef = useRef(false);
 
+  // Notifications State & Logic
+  const [notifications, setNotifications] = useState<AppNotification[]>([]);
+  const [showNotifCenter, setShowNotifCenter] = useState(false);
+  const [toasts, setToasts] = useState<{ id: string; title: string; message: string; type: 'order' | 'stock' | 'system' | 'success' }[]>([]);
+
+  const addNotification = (title: string, message: string, type: 'order' | 'stock' | 'system' | 'success') => {
+    const id = crypto.randomUUID();
+    const newNotif: AppNotification = {
+      id,
+      title,
+      message,
+      type,
+      timestamp: new Date(),
+      read: false
+    };
+    setNotifications(prev => [newNotif, ...prev].slice(0, 30));
+    setToasts(prev => [...prev, { id, title, message, type }]);
+
+    // Auto remove toast after 4.5 seconds
+    setTimeout(() => {
+      setToasts(prev => prev.filter(t => t.id !== id));
+    }, 4500);
+  };
+
   // Load cloud data upon login
   useEffect(() => {
     if (!storeProfile) {
@@ -163,6 +192,13 @@ const App: React.FC = () => {
         // 3. Load all transaction receipts from cloud
         const loadedOrders = await getDetailedOrders(storeProfile);
         setOrders(loadedOrders);
+
+        // Trigger welcome success notification upon cloud sync
+        addNotification(
+          'POS System Ready',
+          `Connected to ${storeProfile.name || 'Pico Cloud'}. Loaded ${syncedMenu.length} menu items & ${loadedOrders.length} receipts securely.`,
+          'success'
+        );
       } catch (err) {
         console.error('[Firebase Sync Error]', err);
       } finally {
@@ -190,6 +226,15 @@ const App: React.FC = () => {
 
     // 1. Prepend order to local state
     setOrders(prev => [newOrder, ...prev]);
+
+    // Send visual + audio notification for new order placement
+    const tableLabel = tables.find(t => t.id === tableId)?.label || `#${tableId}`;
+    const itemSummary = items.map(i => `${i.name} x${i.quantity}`).join(', ');
+    addNotification(
+      `New Order: Table ${tableLabel}`,
+      `Items: ${itemSummary}. Total: ${storeProfile.currency || '$'}${total.toFixed(2)}`,
+      'order'
+    );
     
     // 2. Free up the table locally & sync to layout db
     const updatedTables: Table[] = tables.map(t => 
@@ -202,8 +247,19 @@ const App: React.FC = () => {
     const updatedMenu = menu.map(menuItem => {
         const orderedItem = items.find(i => i.id === menuItem.id);
         if (orderedItem) {
-            const updatedItem = { ...menuItem, stock: Math.max(0, menuItem.stock - orderedItem.quantity) };
+            const nextStock = Math.max(0, menuItem.stock - orderedItem.quantity);
+            const updatedItem = { ...menuItem, stock: nextStock };
             updateServerMenuItem(storeProfile, updatedItem); // Sync specific changed item
+
+            // Trigger low-stock notification if it falls below 5
+            if (nextStock < 5) {
+              addNotification(
+                'Low Stock Alert ⚠️',
+                `"${menuItem.name}" is running extremely low! Only ${nextStock} left in stock.`,
+                'stock'
+              );
+            }
+
             return updatedItem;
         }
         return menuItem;
@@ -224,6 +280,12 @@ const App: React.FC = () => {
 
     if (refunded) {
       await refundFirebaseOrder(storeProfile, refunded, menu);
+      const tableLabel = tables.find(t => t.id === refunded.tableId)?.label || `#${refunded.tableId}`;
+      addNotification(
+        'Order Refunded ↩️',
+        `Table ${tableLabel} order of ${storeProfile.currency || '$'}${refunded.total.toFixed(2)} was successfully refunded.`,
+        'system'
+      );
     }
     setOrders(newOrders);
   };
@@ -311,6 +373,37 @@ const App: React.FC = () => {
         default: return <Coffee className="text-white" size={24} />;
     }
   };
+  
+  const markAllAsRead = () => {
+    setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+  };
+
+  const clearAllNotifications = () => {
+    setNotifications([]);
+  };
+
+  const deleteNotification = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setNotifications(prev => prev.filter(n => n.id !== id));
+  };
+
+  const toggleReadNotification = (id: string) => {
+    setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: !n.read } : n));
+  };
+
+  const unreadCount = notifications.filter(n => !n.read).length;
+
+  const formatNotifTime = (dateObj: Date) => {
+    try {
+      const date = new Date(dateObj);
+      const min = Math.floor((new Date().getTime() - date.getTime()) / 60000);
+      if (min < 1) return '방금 전';
+      if (min < 60) return `${min}m ago`;
+      return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+    } catch {
+      return '방금 전';
+    }
+  };
 
   const sidebarTheme = "bg-slate-900"; 
 
@@ -375,13 +468,179 @@ const App: React.FC = () => {
         storeProfile={storeProfile} 
       />
 
-      {/* Floating Background Sync Status Indicator */}
-      {isSyncing && (
-        <div className="absolute top-4 right-4 z-50 bg-slate-900/90 text-white backdrop-blur-md border border-slate-700/50 rounded-full px-3.5 py-1.5 flex items-center gap-2 text-xs font-semibold shadow-lg animate-in fade-in slide-in-from-top-2">
-          <Loader2 size={13} className="animate-spin text-indigo-400" />
-          <span className="text-[11px] font-bold tracking-tight text-slate-100">Syncing Cloud...</span>
+      {/* Floating Global Utility Bar: Notification Bell & Cloud Sync Status */}
+      <div className="absolute top-4 right-4 z-40 flex items-center gap-3">
+        {/* Sync Indicator */}
+        {isSyncing && (
+          <div className="bg-slate-900/95 text-white backdrop-blur-md border border-slate-700/50 rounded-full px-3.5 py-1.5 flex items-center gap-2 text-xs font-semibold shadow-xl animate-in fade-in slide-in-from-top-2">
+            <Loader2 size={13} className="animate-spin text-indigo-400" />
+            <span className="text-[11px] font-bold tracking-tight text-slate-100">Syncing Cloud...</span>
+          </div>
+        )}
+
+        {/* Bell Action Button */}
+        <div className="relative">
+          <button
+            onClick={() => setShowNotifCenter(!showNotifCenter)}
+            className={`w-10 h-10 rounded-full flex items-center justify-center border transition-all duration-200 shadow-md ${
+              showNotifCenter 
+                ? 'bg-indigo-600 border-indigo-500 text-white shadow-indigo-600/30' 
+                : 'bg-white border-gray-200 text-gray-700 hover:bg-gray-50 hover:text-gray-900'
+            }`}
+            title="Notification Center"
+          >
+            {unreadCount > 0 ? (
+              <div className="relative">
+                <BellRing size={20} className={`animate-bounce ${showNotifCenter ? "text-white" : "text-indigo-600"}`} />
+                <span className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 text-white text-[10px] font-black rounded-full flex items-center justify-center border-2 border-white shadow-md animate-pulse">
+                  {unreadCount}
+                </span>
+              </div>
+            ) : (
+              <Bell size={20} />
+            )}
+          </button>
+
+          {/* Dropdown Card */}
+          {showNotifCenter && (
+            <div className="absolute right-0 mt-3 w-80 sm:w-[380px] bg-white border border-gray-100 rounded-2xl shadow-2xl z-50 overflow-hidden animate-in fade-in slide-in-from-top-3 duration-200">
+              {/* Header */}
+              <div className="bg-slate-900 text-white px-4 py-3 flex justify-between items-center shrink-0">
+                <div className="flex items-center gap-2">
+                  <Bell size={15} className="text-indigo-400" />
+                  <span className="text-xs font-extrabold tracking-tight">Notification Center</span>
+                </div>
+                {notifications.length > 0 && (
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={markAllAsRead}
+                      className="text-[10px] font-extrabold text-indigo-400 hover:text-white flex items-center gap-1 transition"
+                      title="Mark all as read"
+                    >
+                      <CheckCheck size={12} /> Mark Read
+                    </button>
+                    <button
+                      onClick={clearAllNotifications}
+                      className="text-[10px] font-extrabold text-red-400 hover:text-red-300 flex items-center gap-1 transition"
+                      title="Clear all"
+                    >
+                      <Trash2 size={12} /> Clear
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* List */}
+              <div className="max-h-[340px] overflow-y-auto divide-y divide-gray-100">
+                {notifications.length === 0 ? (
+                  <div className="py-12 px-4 text-center text-gray-400 flex flex-col items-center justify-center gap-3">
+                    <div className="p-3 bg-gray-50 rounded-full text-gray-300">
+                      <Bell size={28} />
+                    </div>
+                    <div>
+                      <p className="text-xs font-bold text-gray-500">No recent notifications</p>
+                      <p className="text-[10px] text-gray-400 mt-0.5">Real-time store alerts will appear here.</p>
+                    </div>
+                  </div>
+                ) : (
+                  notifications.map(notif => {
+                    let iconBg = 'bg-gray-100 text-gray-500';
+                    let icon = <Info size={14} />;
+                    let borderLeft = 'border-l-4 border-l-transparent';
+                    
+                    if (notif.type === 'order') {
+                      iconBg = 'bg-indigo-50 text-indigo-600';
+                      icon = <ShoppingBag size={14} />;
+                      borderLeft = notif.read ? 'border-l-4 border-l-slate-200' : 'border-l-4 border-l-indigo-500';
+                    } else if (notif.type === 'stock') {
+                      iconBg = 'bg-amber-50 text-amber-600';
+                      icon = <AlertTriangle size={14} />;
+                      borderLeft = notif.read ? 'border-l-4 border-l-slate-200' : 'border-l-4 border-l-amber-500';
+                    } else if (notif.type === 'success') {
+                      iconBg = 'bg-emerald-50 text-emerald-600';
+                      icon = <CheckCircle2 size={14} />;
+                      borderLeft = notif.read ? 'border-l-4 border-l-slate-200' : 'border-l-4 border-l-emerald-500';
+                    } else if (notif.type === 'system') {
+                      iconBg = 'bg-slate-100 text-slate-600';
+                      icon = <Info size={14} />;
+                      borderLeft = notif.read ? 'border-l-4 border-l-slate-200' : 'border-l-4 border-l-slate-500';
+                    }
+
+                    return (
+                      <div
+                        key={notif.id}
+                        onClick={() => toggleReadNotification(notif.id)}
+                        className={`p-3.5 hover:bg-slate-50/50 cursor-pointer flex gap-3 transition-colors ${borderLeft} ${notif.read ? 'opacity-60' : ''}`}
+                      >
+                        <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${iconBg}`}>
+                          {icon}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex justify-between items-start gap-2">
+                            <h4 className={`text-xs font-bold text-gray-800 truncate ${!notif.read ? 'font-extrabold text-slate-950' : ''}`}>
+                              {notif.title}
+                            </h4>
+                            <span className="text-[9px] font-semibold text-gray-400 shrink-0 uppercase tracking-tighter">
+                              {formatNotifTime(notif.timestamp)}
+                            </span>
+                          </div>
+                          <p className={`text-[11px] text-gray-500 mt-0.5 leading-normal ${!notif.read ? 'text-gray-700 font-medium' : ''}`}>
+                            {notif.message}
+                          </p>
+                        </div>
+                        <button
+                          onClick={(e) => deleteNotification(notif.id, e)}
+                          className="text-gray-300 hover:text-red-500 self-center p-1 rounded-md transition"
+                        >
+                          <X size={12} />
+                        </button>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+          )}
         </div>
-      )}
+      </div>
+
+      {/* Toast Notification Feed Overlay */}
+      <div className="fixed bottom-6 right-6 z-50 flex flex-col gap-2 max-w-sm w-full pointer-events-none px-4 sm:px-0">
+        {toasts.map(toast => {
+          let themeClass = 'bg-white border-slate-200 text-slate-800';
+          let icon = <Info size={16} className="text-slate-500" />;
+          
+          if (toast.type === 'order') {
+            themeClass = 'bg-slate-900 border-indigo-500 text-white';
+            icon = <ShoppingBag size={16} className="text-indigo-400 animate-pulse" />;
+          } else if (toast.type === 'stock') {
+            themeClass = 'bg-amber-50 border-amber-300 text-amber-900 shadow-amber-100';
+            icon = <AlertTriangle size={16} className="text-amber-500 animate-bounce" />;
+          } else if (toast.type === 'success') {
+            themeClass = 'bg-emerald-950 border-emerald-900 text-white';
+            icon = <CheckCircle2 size={16} className="text-emerald-400" />;
+          }
+
+          return (
+            <div
+              key={toast.id}
+              className={`p-3.5 rounded-2xl border shadow-xl flex items-start gap-3 pointer-events-auto animate-in fade-in slide-in-from-bottom-5 duration-300 ${themeClass}`}
+            >
+              <div className="mt-0.5 shrink-0">{icon}</div>
+              <div className="flex-1 min-w-0">
+                <h5 className="text-xs font-extrabold tracking-tight">{toast.title}</h5>
+                <p className="text-[10px] opacity-90 mt-0.5 leading-normal">{toast.message}</p>
+              </div>
+              <button
+                onClick={() => setToasts(prev => prev.filter(t => t.id !== toast.id))}
+                className="opacity-60 hover:opacity-100 self-start p-0.5 rounded transition"
+              >
+                <X size={12} />
+              </button>
+            </div>
+          );
+        })}
+      </div>
       
     </div>
   );
