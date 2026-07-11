@@ -719,11 +719,11 @@ const SettingsView: React.FC<SettingsViewProps> = ({
                                     <div className="pt-4 flex flex-col gap-3">
                                         <div className="flex items-center gap-3 text-gray-600">
                                             <div className="w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center"><Building2 size={16}/></div>
-                                            <span className="text-sm font-medium">Headquarters: Seoul, South Korea</span>
+                                            <span className="text-sm font-medium">Headquarters: Kathmandu, Nepal</span>
                                         </div>
                                         <div className="flex items-center gap-3 text-gray-600">
                                             <div className="w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center"><Wifi size={16}/></div>
-                                            <span className="text-sm font-medium">Website: www.himpower.io</span>
+                                            <span className="text-sm font-medium">Website: himpower.com.np</span>
                                         </div>
                                     </div>
                                 </div>
