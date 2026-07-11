@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { AppMode, Order, Table, MenuItem, OrderItem, StoreProfile } from './types';
 import PosView from './components/PosView';
 import DashboardView from './components/DashboardView';
@@ -137,10 +137,17 @@ const App: React.FC = () => {
   const [lastOrder, setLastOrder] = useState<Order | null>(null);
   const [posKey, setPosKey] = useState(0);
   const [isSyncing, setIsSyncing] = useState(false);
+  const hasLoadedRef = useRef(false);
 
   // Load cloud data upon login
   useEffect(() => {
-    if (!storeProfile) return;
+    if (!storeProfile) {
+      hasLoadedRef.current = false;
+      return;
+    }
+
+    if (hasLoadedRef.current) return;
+    hasLoadedRef.current = true;
 
     const loadCloudData = async () => {
       setIsSyncing(true);
@@ -169,27 +176,6 @@ const App: React.FC = () => {
   // If not logged in, show Login View
   if (!storeProfile) {
     return <LoginView onLogin={(profile) => setStoreProfile(profile)} />;
-  }
-
-  // If syncing metadata, show a beautiful branded cloud loader
-  if (isSyncing) {
-    return (
-      <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center text-white p-4">
-        <div className="relative flex flex-col items-center">
-          <div className="p-5 bg-white/5 rounded-3xl border border-white/10 shadow-2xl backdrop-blur-md mb-6 animate-pulse">
-            <CloudSun size={48} className="text-indigo-400 animate-bounce" />
-          </div>
-          <h2 className="text-xl font-black tracking-tight mb-2">Syncing with Pico Cloud...</h2>
-          <p className="text-xs text-slate-400 max-w-xs text-center leading-relaxed">
-            Please wait while we load your menus, tables, and daily aggregated summaries securely.
-          </p>
-          <div className="mt-6 flex items-center gap-2 px-4 py-2 bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 rounded-full text-[10px] font-bold uppercase tracking-widest">
-            <Loader2 size={12} className="animate-spin" />
-            Optimized Cache Mode
-          </div>
-        </div>
-      </div>
-    );
   }
 
   const handlePlaceOrder = async (tableId: number, items: OrderItem[], total: number) => {
@@ -329,7 +315,7 @@ const App: React.FC = () => {
   const sidebarTheme = "bg-slate-900"; 
 
   return (
-    <div className="flex h-screen w-screen bg-gray-100 text-gray-900 font-sans overflow-hidden flex-col-reverse md:flex-row">
+    <div className="flex h-screen w-screen bg-gray-100 text-gray-900 font-sans overflow-hidden flex-col-reverse md:flex-row relative">
       
       {/* Navigation */}
       <nav className={`w-full md:w-20 ${sidebarTheme} flex flex-row md:flex-col items-center justify-between md:justify-start py-2 md:py-6 px-6 md:px-0 gap-0 md:gap-8 shadow-2xl z-20 shrink-0`}>
@@ -388,6 +374,14 @@ const App: React.FC = () => {
         onClose={() => setLastOrder(null)}
         storeProfile={storeProfile} 
       />
+
+      {/* Floating Background Sync Status Indicator */}
+      {isSyncing && (
+        <div className="absolute top-4 right-4 z-50 bg-slate-900/90 text-white backdrop-blur-md border border-slate-700/50 rounded-full px-3.5 py-1.5 flex items-center gap-2 text-xs font-semibold shadow-lg animate-in fade-in slide-in-from-top-2">
+          <Loader2 size={13} className="animate-spin text-indigo-400" />
+          <span className="text-[11px] font-bold tracking-tight text-slate-100">Syncing Cloud...</span>
+        </div>
+      )}
       
     </div>
   );
