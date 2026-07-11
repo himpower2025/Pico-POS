@@ -173,16 +173,15 @@ const App: React.FC = () => {
     const loadCloudData = async () => {
       setIsSyncing(true);
       try {
-        // 1. Sync menu using Cache-First strategy (Strategy 1)
-        const syncedMenu = await syncMenuWithCache(storeProfile, INITIAL_MENU);
+        // Run all cloud sync operations in parallel to optimize initial load speed
+        const [syncedMenu, syncedTables, loadedOrders] = await Promise.all([
+          syncMenuWithCache(storeProfile, INITIAL_MENU),
+          syncTablesWithFirebase(storeProfile, INITIAL_TABLES),
+          getDetailedOrders(storeProfile)
+        ]);
+
         setMenu(syncedMenu);
-
-        // 2. Sync layout tables from cloud
-        const syncedTables = await syncTablesWithFirebase(storeProfile, INITIAL_TABLES);
         setTables(syncedTables);
-
-        // 3. Load all transaction receipts from cloud
-        const loadedOrders = await getDetailedOrders(storeProfile);
         setOrders(loadedOrders);
 
         // Trigger welcome success notification upon cloud sync
@@ -508,7 +507,7 @@ const App: React.FC = () => {
             <div className="bg-slate-900 text-white px-5 py-4 flex justify-between items-center shrink-0">
               <div className="flex items-center gap-2.5">
                 <Bell size={18} className="text-indigo-400" />
-                <span className="text-sm font-extrabold tracking-tight">알림 센터</span>
+                <span className="text-sm font-extrabold tracking-tight">Notification Center</span>
                 {unreadCount > 0 && (
                   <span className="bg-red-500 text-white text-[9px] font-black px-2 py-0.5 rounded-full animate-pulse">
                     {unreadCount}
@@ -521,16 +520,16 @@ const App: React.FC = () => {
                     <button
                       onClick={markAllAsRead}
                       className="text-[10px] font-extrabold text-indigo-400 hover:text-white flex items-center gap-1 transition"
-                      title="모두 읽음으로 표시"
+                      title="Mark all as read"
                     >
-                      <CheckCheck size={12} /> 모두 읽음
+                      <CheckCheck size={12} /> Mark Read
                     </button>
                     <button
                       onClick={clearAllNotifications}
                       className="text-[10px] font-extrabold text-red-400 hover:text-red-300 flex items-center gap-1 transition"
-                      title="모든 알림 지우기"
+                      title="Clear all notifications"
                     >
-                      <Trash2 size={12} /> 전체 삭제
+                      <Trash2 size={12} /> Clear All
                     </button>
                   </div>
                 )}
@@ -551,9 +550,9 @@ const App: React.FC = () => {
                     <Bell size={32} />
                   </div>
                   <div>
-                    <p className="text-xs font-bold text-gray-500">수신된 알림이 없습니다</p>
+                    <p className="text-xs font-bold text-gray-500">No recent notifications</p>
                     <p className="text-[10px] text-gray-400 mt-1 max-w-[220px] mx-auto leading-relaxed">
-                      매장 운영, 주문 접수 및 실시간 재고 경고 등 유익한 정보들이 제공됩니다.
+                      Real-time store alerts, orders, and stock updates will appear here.
                     </p>
                   </div>
                 </div>

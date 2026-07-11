@@ -186,7 +186,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({
   };
 
   const handleResetTables = () => {
-      if (confirm("테이블 배치를 기본 레이아웃(4개 테이블)으로 초기화하시겠습니까? 현재 레이아웃은 삭제됩니다.")) {
+      if (confirm("Are you sure you want to reset the tables to the default layout (4 tables)? Your current layout will be overwritten.")) {
           onUpdateTables([
               { id: 1, label: 'T-1', x: 15, y: 15, status: 'empty' },
               { id: 2, label: 'T-2', x: 55, y: 15, status: 'empty' },
@@ -606,9 +606,9 @@ const SettingsView: React.FC<SettingsViewProps> = ({
                                                 className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-extrabold flex items-center gap-1.5 shadow-sm transition-all duration-200 active:scale-95"
                                             >
                                                 <Camera size={14} />
-                                                사진 촬영 및 업로드
+                                                Take Photo & Upload
                                             </button>
-                                            <span className="text-[10px] text-gray-400 font-medium">모바일 카메라 촬영 또는 갤러리 지원</span>
+                                            <span className="text-[10px] text-gray-400 font-medium">Supports mobile camera or photo library</span>
                                             <input 
                                                 type="file"
                                                 ref={fileInputRef}
@@ -619,7 +619,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({
                                         </div>
                                         <div className="relative">
                                             <input 
-                                                placeholder="또는 이미지 주소(URL) 직접 입력" 
+                                                placeholder="Or paste direct image URL address" 
                                                 value={editingItem.image || ''}
                                                 onChange={e => setEditingItem({...editingItem, image: e.target.value})}
                                                 className="w-full px-3 py-1.5 border border-gray-200 rounded-lg text-xs"
