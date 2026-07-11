@@ -5,6 +5,7 @@ import {
   Lock, RefreshCw, HelpCircle, ChevronDown, MessageSquare, 
   Send, Mail, X, CheckCircle 
 } from 'lucide-react';
+import { ConfirmModal } from './ConfirmModal';
 
 interface SubscriptionViewProps {
   storeProfile: StoreProfile;
@@ -33,6 +34,22 @@ export const SubscriptionView: React.FC<SubscriptionViewProps> = ({
   const [feedbackSubject, setFeedbackSubject] = useState('');
   const [feedbackCategory, setFeedbackCategory] = useState('Suggestion');
   const [feedbackMessage, setFeedbackMessage] = useState('');
+
+  // Custom Confirmation Modal State
+  const [confirmModal, setConfirmModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    confirmText?: string;
+    cancelText?: string;
+    onConfirm: () => void;
+    isDanger?: boolean;
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: () => {}
+  });
   const [isSendingFeedback, setIsSendingFeedback] = useState(false);
   const [feedbackSuccess, setFeedbackSuccess] = useState(false);
 
@@ -129,21 +146,30 @@ export const SubscriptionView: React.FC<SubscriptionViewProps> = ({
 
   // Reset demo subscription state to try again
   const handleResetSubscription = () => {
-    if (confirm('Would you like to reset your subscription state to test the checkout again?')) {
-      onUpdateProfile({
-        ...storeProfile,
-        subscriptionStatus: 'none',
-        subscriptionMonthsPaid: 0,
-        subscriptionStartDate: undefined,
-        subscriptionNextBillingDate: undefined
-      });
-      setCardNumber('');
-      setCardName('');
-      setCardExpiry('');
-      setCardCvv('');
-      setZipCode('');
-      setIsSuccess(false);
-    }
+    setConfirmModal({
+      isOpen: true,
+      title: 'Reset Subscription State',
+      message: 'Would you like to reset your subscription state to test the checkout again?',
+      confirmText: 'Reset Subscription',
+      cancelText: 'Cancel',
+      isDanger: true,
+      onConfirm: () => {
+        onUpdateProfile({
+          ...storeProfile,
+          subscriptionStatus: 'none',
+          subscriptionMonthsPaid: 0,
+          subscriptionStartDate: undefined,
+          subscriptionNextBillingDate: undefined
+        });
+        setCardNumber('');
+        setCardName('');
+        setCardExpiry('');
+        setCardCvv('');
+        setZipCode('');
+        setIsSuccess(false);
+        setConfirmModal(prev => ({ ...prev, isOpen: false }));
+      }
+    });
   };
 
   return (
@@ -783,6 +809,17 @@ export const SubscriptionView: React.FC<SubscriptionViewProps> = ({
           </div>
         </div>
       )}
+
+      <ConfirmModal 
+        isOpen={confirmModal.isOpen}
+        title={confirmModal.title}
+        message={confirmModal.message}
+        confirmText={confirmModal.confirmText}
+        cancelText={confirmModal.cancelText}
+        isDanger={confirmModal.isDanger}
+        onConfirm={confirmModal.onConfirm}
+        onCancel={() => setConfirmModal(prev => ({ ...prev, isOpen: false }))}
+      />
     </div>
   );
 };

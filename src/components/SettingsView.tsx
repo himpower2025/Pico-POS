@@ -4,6 +4,7 @@ import { StoreProfile, MenuItem, Table } from '../types';
 import { formatCurrency } from '../lib/utils';
 import { LegalDocsView } from './LegalDocs';
 import { SubscriptionView } from './SubscriptionView';
+import { ConfirmModal } from './ConfirmModal';
 
 interface SettingsViewProps {
     storeProfile: StoreProfile;
@@ -94,6 +95,22 @@ const SettingsView: React.FC<SettingsViewProps> = ({
   const [editingItem, setEditingItem] = useState<Partial<MenuItem> | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Custom Confirmation Modal State
+  const [confirmModal, setConfirmModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    confirmText?: string;
+    cancelText?: string;
+    onConfirm: () => void;
+    isDanger?: boolean;
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: () => {}
+  });
+
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -168,9 +185,18 @@ const SettingsView: React.FC<SettingsViewProps> = ({
   };
 
   const handleDeleteItem = (id: string) => {
-    if (confirm("Are you sure you want to delete this item?")) {
+    setConfirmModal({
+      isOpen: true,
+      title: 'Delete Menu Item',
+      message: 'Are you sure you want to delete this menu item? This action cannot be undone.',
+      confirmText: 'Delete',
+      cancelText: 'Cancel',
+      isDanger: true,
+      onConfirm: () => {
         onUpdateMenu(menu.filter(item => item.id !== id));
-    }
+        setConfirmModal(prev => ({ ...prev, isOpen: false }));
+      }
+    });
   };
 
   // --- Floor Plan Handlers ---
@@ -186,20 +212,38 @@ const SettingsView: React.FC<SettingsViewProps> = ({
   };
 
   const handleResetTables = () => {
-      if (confirm("Are you sure you want to reset the tables to the default layout (4 tables)? Your current layout will be overwritten.")) {
+      setConfirmModal({
+        isOpen: true,
+        title: 'Reset Floor Layout',
+        message: 'Are you sure you want to reset the tables to the default layout (4 tables)? Your current custom table positions and counts will be completely overwritten.',
+        confirmText: 'Reset Layout',
+        cancelText: 'Cancel',
+        isDanger: true,
+        onConfirm: () => {
           onUpdateTables([
               { id: 1, label: 'T-1', x: 15, y: 15, status: 'empty' },
               { id: 2, label: 'T-2', x: 55, y: 15, status: 'empty' },
               { id: 3, label: 'VIP-1', x: 15, y: 55, status: 'empty' },
               { id: 4, label: 'Patio', x: 55, y: 55, status: 'empty' },
           ]);
-      }
+          setConfirmModal(prev => ({ ...prev, isOpen: false }));
+        }
+      });
   };
 
   const handleRemoveTable = (id: number) => {
-      if (confirm("Delete this table?")) {
+      setConfirmModal({
+        isOpen: true,
+        title: 'Remove Table',
+        message: 'Are you sure you want to delete this table? Customers sitting at this table will be unassigned.',
+        confirmText: 'Remove',
+        cancelText: 'Cancel',
+        isDanger: true,
+        onConfirm: () => {
           onUpdateTables(tables.filter(t => t.id !== id));
-      }
+          setConfirmModal(prev => ({ ...prev, isOpen: false }));
+        }
+      });
   };
 
   const handleDragStart = (e: React.MouseEvent | React.TouchEvent, id: number) => {
@@ -974,6 +1018,17 @@ const SettingsView: React.FC<SettingsViewProps> = ({
 
         </div>
       </div>
+
+      <ConfirmModal 
+        isOpen={confirmModal.isOpen}
+        title={confirmModal.title}
+        message={confirmModal.message}
+        confirmText={confirmModal.confirmText}
+        cancelText={confirmModal.cancelText}
+        isDanger={confirmModal.isDanger}
+        onConfirm={confirmModal.onConfirm}
+        onCancel={() => setConfirmModal(prev => ({ ...prev, isOpen: false }))}
+      />
     </div>
   );
 };

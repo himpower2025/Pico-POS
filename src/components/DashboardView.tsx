@@ -5,6 +5,7 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 import { Sparkles, TrendingUp, DollarSign, Activity, BrainCircuit, Coins, Calendar, Zap, ListChecks, RotateCcw, Printer } from 'lucide-react';
 import ReceiptModal from './ReceiptModal';
 import { formatCurrency, getCurrencyConfig } from '../lib/utils';
+import { ConfirmModal } from './ConfirmModal';
 
 interface OperationalExpense {
   id: string;
@@ -31,6 +32,22 @@ const DashboardView: React.FC<DashboardViewProps> = ({ orders, onUpdateOrders, m
   
   // State for reprinting/viewing specific past orders
   const [previewOrder, setPreviewOrder] = useState<Order | null>(null);
+
+  // Custom Confirmation Modal State
+  const [confirmModal, setConfirmModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    confirmText?: string;
+    cancelText?: string;
+    onConfirm: () => void;
+    isDanger?: boolean;
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: () => {}
+  });
 
   // Custom operational expenses
   const [expenses, setExpenses] = useState<OperationalExpense[]>(() => {
@@ -83,9 +100,18 @@ const DashboardView: React.FC<DashboardViewProps> = ({ orders, onUpdateOrders, m
   };
 
   const handleDeleteExpense = (id: string) => {
-    if (confirm('Are you sure you want to delete this expense record?')) {
-      saveExpenses(expenses.filter(e => e.id !== id));
-    }
+    setConfirmModal({
+      isOpen: true,
+      title: 'Delete Expense Record',
+      message: 'Are you sure you want to delete this expense record? This action cannot be undone.',
+      confirmText: 'Delete',
+      cancelText: 'Cancel',
+      isDanger: true,
+      onConfirm: () => {
+        saveExpenses(expenses.filter(e => e.id !== id));
+        setConfirmModal(prev => ({ ...prev, isOpen: false }));
+      }
+    });
   };
 
   // Calculate real-time stats including custom operational expenses
@@ -163,11 +189,20 @@ const DashboardView: React.FC<DashboardViewProps> = ({ orders, onUpdateOrders, m
   };
 
   const handleRefund = (orderId: string) => {
-      if (confirm("Are you sure you want to refund this order? This cannot be undone.")) {
+      setConfirmModal({
+        isOpen: true,
+        title: 'Refund Order',
+        message: 'Are you sure you want to refund this order? This cannot be undone and will void the transaction.',
+        confirmText: 'Refund',
+        cancelText: 'Cancel',
+        isDanger: true,
+        onConfirm: () => {
           onUpdateOrders(orders.map(o => 
              o.id === orderId ? { ...o, status: 'refunded' } : o
           ));
-      }
+          setConfirmModal(prev => ({ ...prev, isOpen: false }));
+        }
+      });
   };
 
   return (
@@ -577,6 +612,17 @@ const DashboardView: React.FC<DashboardViewProps> = ({ orders, onUpdateOrders, m
         order={previewOrder} 
         onClose={() => setPreviewOrder(null)} 
         storeProfile={storeProfile}
+      />
+
+      <ConfirmModal 
+        isOpen={confirmModal.isOpen}
+        title={confirmModal.title}
+        message={confirmModal.message}
+        confirmText={confirmModal.confirmText}
+        cancelText={confirmModal.cancelText}
+        isDanger={confirmModal.isDanger}
+        onConfirm={confirmModal.onConfirm}
+        onCancel={() => setConfirmModal(prev => ({ ...prev, isOpen: false }))}
       />
     </div>
   );
