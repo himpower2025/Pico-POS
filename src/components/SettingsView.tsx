@@ -96,6 +96,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({
   // Floor Plan State
   const floorRef = useRef<HTMLDivElement>(null);
   const [draggingTable, setDraggingTable] = useState<number | null>(null);
+  const floorCount = storeProfile.floorCount !== undefined ? storeProfile.floorCount : 3;
 
   // Hardware State
   const [connectedPrinter, setConnectedPrinter] = useState<string | null>(null);
@@ -564,17 +565,37 @@ const SettingsView: React.FC<SettingsViewProps> = ({
             {/* FLOOR PLAN TAB */}
             {activeTab === 'floor' && (
                 <div className="space-y-6 h-full flex flex-col animate-in fade-in slide-in-from-bottom-2">
-                    <div className="flex justify-between items-center shrink-0">
+                    <div className="flex flex-col md:flex-row justify-between md:items-center gap-4 shrink-0">
                          <div>
                             <h2 className="text-xl font-bold text-gray-800">Floor Plan</h2>
                             <p className="text-sm text-gray-500">Drag tables to match your physical store layout.</p>
                         </div>
-                        <button 
-                            onClick={handleAddTable}
-                            className="bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 px-4 py-2 rounded-xl font-bold flex items-center gap-2 shadow-sm"
-                        >
-                            <LayoutTemplate size={18} /> Add Table
-                        </button>
+                        <div className="flex flex-wrap items-center gap-3">
+                            {/* Floor Selection Segmented Control */}
+                            <div className="bg-gray-100 p-1 rounded-xl flex items-center border border-gray-200">
+                                <span className="text-xs font-bold text-gray-500 px-3 uppercase tracking-wider hidden sm:inline">Floors:</span>
+                                {[1, 2, 3].map((f) => (
+                                    <button
+                                        key={f}
+                                        onClick={() => onUpdateProfile({ ...storeProfile, floorCount: f as 1 | 2 | 3 })}
+                                        className={`px-3.5 py-1.5 rounded-lg text-xs font-black transition-all duration-200 ${
+                                            floorCount === f 
+                                                ? 'bg-indigo-600 text-white shadow-sm' 
+                                                : 'text-gray-600 hover:bg-gray-200 hover:text-gray-800'
+                                        }`}
+                                    >
+                                        {f}F
+                                    </button>
+                                ))}
+                            </div>
+
+                            <button 
+                                onClick={handleAddTable}
+                                className="bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 px-4 py-2 rounded-xl font-bold flex items-center gap-2 shadow-sm"
+                            >
+                                <LayoutTemplate size={18} /> Add Table
+                            </button>
+                        </div>
                     </div>
 
                     {/* Canvas */}
@@ -586,6 +607,63 @@ const SettingsView: React.FC<SettingsViewProps> = ({
                             backgroundSize: '30px 30px' 
                         }}
                     >
+                        {/* Floor Boundary Dividers & Zone Labels */}
+                        <div className="absolute inset-0 pointer-events-none select-none z-0">
+                            {floorCount === 3 && (
+                                <>
+                                    {/* 3rd Floor Area Label */}
+                                    <div className="absolute top-3 left-4 bg-slate-300/60 text-slate-700 backdrop-blur-[2px] px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-widest border border-slate-400/20 shadow-sm">
+                                        3F (3rd Floor)
+                                    </div>
+
+                                    {/* Divider between 3F and 2F */}
+                                    <div className="absolute top-[33.3%] left-0 right-0 border-t-2 border-dashed border-slate-300 flex justify-end">
+                                        <span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest mr-4 -mt-2.5 bg-slate-200 px-1.5 py-0.5 rounded shadow-sm border border-slate-300/40">3F / 2F Boundary</span>
+                                    </div>
+
+                                    {/* 2nd Floor Area Label */}
+                                    <div className="absolute top-[36%] left-4 bg-slate-300/60 text-slate-700 backdrop-blur-[2px] px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-widest border border-slate-400/20 shadow-sm">
+                                        2F (2nd Floor)
+                                    </div>
+
+                                    {/* Divider between 2F and 1F */}
+                                    <div className="absolute top-[66.6%] left-0 right-0 border-t-2 border-dashed border-slate-300 flex justify-end">
+                                        <span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest mr-4 -mt-2.5 bg-slate-200 px-1.5 py-0.5 rounded shadow-sm border border-slate-300/40">2F / 1F Boundary</span>
+                                    </div>
+
+                                    {/* 1st Floor Area Label */}
+                                    <div className="absolute top-[69%] left-4 bg-slate-300/60 text-slate-700 backdrop-blur-[2px] px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-widest border border-slate-400/20 shadow-sm">
+                                        1F (1st Floor / Reception)
+                                    </div>
+                                </>
+                            )}
+
+                            {floorCount === 2 && (
+                                <>
+                                    {/* 2nd Floor Area Label */}
+                                    <div className="absolute top-3 left-4 bg-slate-300/60 text-slate-700 backdrop-blur-[2px] px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-widest border border-slate-400/20 shadow-sm">
+                                        2F (2nd Floor)
+                                    </div>
+
+                                    {/* Divider between 2F and 1F */}
+                                    <div className="absolute top-[50%] left-0 right-0 border-t-2 border-dashed border-slate-300 flex justify-end">
+                                        <span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest mr-4 -mt-2.5 bg-slate-200 px-1.5 py-0.5 rounded shadow-sm border border-slate-300/40">2F / 1F Boundary</span>
+                                    </div>
+
+                                    {/* 1st Floor Area Label */}
+                                    <div className="absolute top-[53%] left-4 bg-slate-300/60 text-slate-700 backdrop-blur-[2px] px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-widest border border-slate-400/20 shadow-sm">
+                                        1F (1st Floor / Reception)
+                                    </div>
+                                </>
+                            )}
+
+                            {floorCount === 1 && (
+                                <div className="absolute top-3 left-4 bg-slate-300/60 text-slate-700 backdrop-blur-[2px] px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-widest border border-slate-400/20 shadow-sm">
+                                    Single Floor Layout (1F)
+                                </div>
+                            )}
+                        </div>
+
                         {tables.map(table => (
                             <div 
                                 key={table.id}

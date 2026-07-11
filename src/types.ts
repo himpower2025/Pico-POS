@@ -45,6 +45,7 @@ export interface StoreProfile {
   subscriptionMonthsPaid?: number; // Tracker up to 12 for Rent-to-Own
   subscriptionStartDate?: string;
   subscriptionNextBillingDate?: string;
+  floorCount?: 1 | 2 | 3; // Number of floors in the store layout
 }
 
 export interface SalesData {

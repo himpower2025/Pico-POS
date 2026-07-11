@@ -15,6 +15,7 @@ const PosView: React.FC<PosViewProps> = ({ tables, menu, onPlaceOrder, storeProf
   const [currentOrder, setCurrentOrder] = useState<OrderItem[]>([]);
   const [activeCategory, setActiveCategory] = useState<string>('all');
   const [noteInputId, setNoteInputId] = useState<string | null>(null); // Track which item is adding a note
+  const floorCount = storeProfile.floorCount !== undefined ? storeProfile.floorCount : 3;
 
   const categories = [
     { id: 'all', label: 'All', icon: <Utensils size={18} /> },
@@ -122,6 +123,63 @@ const PosView: React.FC<PosViewProps> = ({ tables, menu, onPlaceOrder, storeProf
              <div className="absolute inset-0 opacity-20" 
                   style={{ backgroundImage: 'radial-gradient(#94a3b8 2px, transparent 2px)', backgroundSize: '40px 40px' }}>
              </div>
+
+              {/* Floor Boundary Dividers & Zone Labels */}
+              <div className="absolute inset-0 pointer-events-none select-none z-0">
+                  {floorCount === 3 && (
+                      <>
+                          {/* 3rd Floor Area Label */}
+                          <div className="absolute top-3 left-4 bg-slate-100/80 text-slate-500 backdrop-blur-[2px] px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-widest border border-slate-200 shadow-sm">
+                              3F (3rd Floor)
+                          </div>
+
+                          {/* Divider between 3F and 2F */}
+                          <div className="absolute top-[33.3%] left-0 right-0 border-t border-dashed border-slate-200 flex justify-end">
+                              <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mr-4 -mt-2 bg-white px-1.5 py-0.5 rounded border border-slate-100 shadow-sm">3F / 2F Boundary</span>
+                          </div>
+
+                          {/* 2nd Floor Area Label */}
+                          <div className="absolute top-[36%] left-4 bg-slate-100/80 text-slate-500 backdrop-blur-[2px] px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-widest border border-slate-200 shadow-sm">
+                              2F (2nd Floor)
+                          </div>
+
+                          {/* Divider between 2F and 1F */}
+                          <div className="absolute top-[66.6%] left-0 right-0 border-t border-dashed border-slate-200 flex justify-end">
+                              <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mr-4 -mt-2 bg-white px-1.5 py-0.5 rounded border border-slate-100 shadow-sm">2F / 1F Boundary</span>
+                          </div>
+
+                          {/* 1st Floor Area Label */}
+                          <div className="absolute top-[69%] left-4 bg-slate-100/80 text-slate-500 backdrop-blur-[2px] px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-widest border border-slate-200 shadow-sm">
+                              1F (1st Floor / Reception)
+                          </div>
+                      </>
+                  )}
+
+                  {floorCount === 2 && (
+                      <>
+                          {/* 2nd Floor Area Label */}
+                          <div className="absolute top-3 left-4 bg-slate-100/80 text-slate-500 backdrop-blur-[2px] px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-widest border border-slate-200 shadow-sm">
+                              2F (2nd Floor)
+                          </div>
+
+                          {/* Divider between 2F and 1F */}
+                          <div className="absolute top-[50%] left-0 right-0 border-t border-dashed border-slate-200 flex justify-end">
+                              <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mr-4 -mt-2 bg-white px-1.5 py-0.5 rounded border border-slate-100 shadow-sm">2F / 1F Boundary</span>
+                          </div>
+
+                          {/* 1st Floor Area Label */}
+                          <div className="absolute top-[53%] left-4 bg-slate-100/80 text-slate-500 backdrop-blur-[2px] px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-widest border border-slate-200 shadow-sm">
+                              1F (1st Floor / Reception)
+                          </div>
+                      </>
+                  )}
+
+                  {floorCount === 1 && (
+                      <div className="absolute top-3 left-4 bg-slate-100/80 text-slate-500 backdrop-blur-[2px] px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-widest border border-slate-200 shadow-sm">
+                          Single Floor Layout (1F)
+                      </div>
+                  )}
+              </div>
 
              {tables.map(table => (
                 <button
