@@ -723,7 +723,17 @@ const SettingsView: React.FC<SettingsViewProps> = ({
                                         </div>
                                         <div className="flex items-center gap-3 text-gray-600">
                                             <div className="w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center"><Wifi size={16}/></div>
-                                            <span className="text-sm font-medium">Website: himpower.com.np</span>
+                                            <span className="text-sm font-medium">
+                                                Website:{" "}
+                                                <a 
+                                                    href="http://himpower.com.np" 
+                                                    target="_blank" 
+                                                    rel="noopener noreferrer" 
+                                                    className="text-indigo-600 hover:text-indigo-800 hover:underline transition-all duration-200"
+                                                >
+                                                    himpower.com.np
+                                                </a>
+                                            </span>
                                         </div>
                                     </div>
                                 </div>
