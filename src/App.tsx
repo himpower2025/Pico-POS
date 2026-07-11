@@ -410,6 +410,11 @@ const App: React.FC = () => {
   return (
     <div className="flex h-screen w-screen bg-gray-100 text-gray-900 font-sans overflow-hidden flex-col-reverse md:flex-row relative">
       
+      {/* Premium Linear Top Sync Bar */}
+      {isSyncing && (
+        <div className="fixed top-0 left-0 right-0 h-1 bg-gradient-to-r from-indigo-500 via-purple-500 to-indigo-500 z-50 animate-pulse pointer-events-none" />
+      )}
+
       {/* Navigation */}
       <nav className={`w-full md:w-20 ${sidebarTheme} flex flex-row md:flex-col items-center justify-between md:justify-start py-2 md:py-6 px-6 md:px-0 gap-0 md:gap-8 shadow-2xl z-20 shrink-0`}>
         <button 
@@ -422,29 +427,54 @@ const App: React.FC = () => {
 
         <div className="flex-1 flex flex-row md:flex-col justify-around md:justify-start gap-1 md:gap-6 w-full md:px-2">
           <button 
-            onClick={() => setMode(AppMode.POS)}
-            className={`flex flex-col items-center gap-1 p-2 md:p-3 rounded-xl transition-all ${mode === AppMode.POS ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-900/50' : 'text-gray-500 hover:text-gray-300'}`}
+            onClick={() => { setMode(AppMode.POS); setShowNotifCenter(false); }}
+            className={`flex flex-col items-center gap-1 p-2 md:p-3 rounded-xl transition-all ${mode === AppMode.POS && !showNotifCenter ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-900/50' : 'text-gray-500 hover:text-gray-300'}`}
           >
             <MonitorPlay size={20} className="md:w-6 md:h-6" />
             <span className="text-[10px] font-bold">POS</span>
           </button>
           
           <button 
-            onClick={() => setMode(AppMode.DASHBOARD)}
-            className={`flex flex-col items-center gap-1 p-2 md:p-3 rounded-xl transition-all ${mode === AppMode.DASHBOARD ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-900/50' : 'text-gray-500 hover:text-gray-300'}`}
+            onClick={() => { setMode(AppMode.DASHBOARD); setShowNotifCenter(false); }}
+            className={`flex flex-col items-center gap-1 p-2 md:p-3 rounded-xl transition-all ${mode === AppMode.DASHBOARD && !showNotifCenter ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-900/50' : 'text-gray-500 hover:text-gray-300'}`}
           >
             <LayoutGrid size={20} className="md:w-6 md:h-6" />
             <span className="text-[10px] font-bold">Admin</span>
           </button>
 
           <button 
-            onClick={() => setMode(AppMode.SETTINGS)}
-            className={`flex flex-col items-center gap-1 p-2 md:p-3 rounded-xl transition-all ${mode === AppMode.SETTINGS ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-900/50' : 'text-gray-500 hover:text-gray-300'}`}
+            onClick={() => { setMode(AppMode.SETTINGS); setShowNotifCenter(false); }}
+            className={`flex flex-col items-center gap-1 p-2 md:p-3 rounded-xl transition-all ${mode === AppMode.SETTINGS && !showNotifCenter ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-900/50' : 'text-gray-500 hover:text-gray-300'}`}
           >
             <Settings size={20} className="md:w-6 md:h-6" />
             <span className="text-[10px] font-bold">Settings</span>
           </button>
+
+          {/* Integrated Notification Bell/Alerts button */}
+          <button 
+            onClick={() => setShowNotifCenter(!showNotifCenter)}
+            className={`flex flex-col items-center gap-1 p-2 md:p-3 rounded-xl transition-all relative ${showNotifCenter ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-900/50' : 'text-gray-500 hover:text-gray-300'}`}
+          >
+            {unreadCount > 0 ? (
+              <div className="relative">
+                <BellRing size={20} className="md:w-6 md:h-6 animate-bounce text-amber-400" />
+                <span className="absolute -top-1.5 -right-1.5 w-4.5 h-4.5 bg-red-500 text-white text-[9px] font-black rounded-full flex items-center justify-center border-2 border-slate-900 animate-pulse">
+                  {unreadCount}
+                </span>
+              </div>
+            ) : (
+              <Bell size={20} className="md:w-6 md:h-6" />
+            )}
+            <span className="text-[10px] font-bold">Alerts</span>
+          </button>
         </div>
+
+        {/* Small Desktop Sidebar Sync Spinner */}
+        {isSyncing && (
+          <div className="hidden md:flex items-center justify-center w-10 h-10 rounded-xl bg-indigo-500/10 text-indigo-400 mb-2" title="Cloud Syncing...">
+            <Loader2 size={18} className="animate-spin" />
+          </div>
+        )}
 
         <button onClick={handleLogout} className="text-gray-500 hover:text-red-400 p-3 hidden md:block" title="Logout">
           <LogOut size={24} />
@@ -468,141 +498,134 @@ const App: React.FC = () => {
         storeProfile={storeProfile} 
       />
 
-      {/* Floating Global Utility Bar: Notification Bell & Cloud Sync Status */}
-      <div className="absolute top-4 right-4 z-40 flex items-center gap-3">
-        {/* Sync Indicator */}
-        {isSyncing && (
-          <div className="bg-slate-900/95 text-white backdrop-blur-md border border-slate-700/50 rounded-full px-3.5 py-1.5 flex items-center gap-2 text-xs font-semibold shadow-xl animate-in fade-in slide-in-from-top-2">
-            <Loader2 size={13} className="animate-spin text-indigo-400" />
-            <span className="text-[11px] font-bold tracking-tight text-slate-100">Syncing Cloud...</span>
-          </div>
-        )}
-
-        {/* Bell Action Button */}
-        <div className="relative">
-          <button
-            onClick={() => setShowNotifCenter(!showNotifCenter)}
-            className={`w-10 h-10 rounded-full flex items-center justify-center border transition-all duration-200 shadow-md ${
-              showNotifCenter 
-                ? 'bg-indigo-600 border-indigo-500 text-white shadow-indigo-600/30' 
-                : 'bg-white border-gray-200 text-gray-700 hover:bg-gray-50 hover:text-gray-900'
-            }`}
-            title="Notification Center"
+      {/* Slide-out Notification Drawer Panel (Desktop Left Slide-out, Mobile Bottom-Sheet) */}
+      {showNotifCenter && (
+        <>
+          {/* Backdrop overlay */}
+          <div 
+            className="fixed inset-0 bg-black/40 backdrop-blur-sm z-30 transition-opacity"
+            onClick={() => setShowNotifCenter(false)}
+          />
+          
+          {/* Drawer Panel container */}
+          <div className="fixed z-40 bg-white shadow-2xl overflow-hidden flex flex-col transition-all duration-300
+            md:left-20 md:top-0 md:bottom-0 md:h-full md:w-[380px] md:rounded-r-2xl md:animate-in md:slide-in-from-left
+            left-0 right-0 bottom-16 rounded-t-3xl max-h-[75vh] animate-in slide-in-from-bottom"
           >
-            {unreadCount > 0 ? (
-              <div className="relative">
-                <BellRing size={20} className={`animate-bounce ${showNotifCenter ? "text-white" : "text-indigo-600"}`} />
-                <span className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 text-white text-[10px] font-black rounded-full flex items-center justify-center border-2 border-white shadow-md animate-pulse">
-                  {unreadCount}
-                </span>
+            {/* Drawer Header */}
+            <div className="bg-slate-900 text-white px-5 py-4 flex justify-between items-center shrink-0">
+              <div className="flex items-center gap-2.5">
+                <Bell size={18} className="text-indigo-400" />
+                <span className="text-sm font-extrabold tracking-tight">알림 센터</span>
+                {unreadCount > 0 && (
+                  <span className="bg-red-500 text-white text-[9px] font-black px-2 py-0.5 rounded-full animate-pulse">
+                    {unreadCount}
+                  </span>
+                )}
               </div>
-            ) : (
-              <Bell size={20} />
-            )}
-          </button>
-
-          {/* Dropdown Card */}
-          {showNotifCenter && (
-            <div className="absolute right-0 mt-3 w-80 sm:w-[380px] bg-white border border-gray-100 rounded-2xl shadow-2xl z-50 overflow-hidden animate-in fade-in slide-in-from-top-3 duration-200">
-              {/* Header */}
-              <div className="bg-slate-900 text-white px-4 py-3 flex justify-between items-center shrink-0">
-                <div className="flex items-center gap-2">
-                  <Bell size={15} className="text-indigo-400" />
-                  <span className="text-xs font-extrabold tracking-tight">Notification Center</span>
-                </div>
+              <div className="flex items-center gap-3">
                 {notifications.length > 0 && (
                   <div className="flex items-center gap-3">
                     <button
                       onClick={markAllAsRead}
                       className="text-[10px] font-extrabold text-indigo-400 hover:text-white flex items-center gap-1 transition"
-                      title="Mark all as read"
+                      title="모두 읽음으로 표시"
                     >
-                      <CheckCheck size={12} /> Mark Read
+                      <CheckCheck size={12} /> 모두 읽음
                     </button>
                     <button
                       onClick={clearAllNotifications}
                       className="text-[10px] font-extrabold text-red-400 hover:text-red-300 flex items-center gap-1 transition"
-                      title="Clear all"
+                      title="모든 알림 지우기"
                     >
-                      <Trash2 size={12} /> Clear
+                      <Trash2 size={12} /> 전체 삭제
                     </button>
                   </div>
                 )}
-              </div>
-
-              {/* List */}
-              <div className="max-h-[340px] overflow-y-auto divide-y divide-gray-100">
-                {notifications.length === 0 ? (
-                  <div className="py-12 px-4 text-center text-gray-400 flex flex-col items-center justify-center gap-3">
-                    <div className="p-3 bg-gray-50 rounded-full text-gray-300">
-                      <Bell size={28} />
-                    </div>
-                    <div>
-                      <p className="text-xs font-bold text-gray-500">No recent notifications</p>
-                      <p className="text-[10px] text-gray-400 mt-0.5">Real-time store alerts will appear here.</p>
-                    </div>
-                  </div>
-                ) : (
-                  notifications.map(notif => {
-                    let iconBg = 'bg-gray-100 text-gray-500';
-                    let icon = <Info size={14} />;
-                    let borderLeft = 'border-l-4 border-l-transparent';
-                    
-                    if (notif.type === 'order') {
-                      iconBg = 'bg-indigo-50 text-indigo-600';
-                      icon = <ShoppingBag size={14} />;
-                      borderLeft = notif.read ? 'border-l-4 border-l-slate-200' : 'border-l-4 border-l-indigo-500';
-                    } else if (notif.type === 'stock') {
-                      iconBg = 'bg-amber-50 text-amber-600';
-                      icon = <AlertTriangle size={14} />;
-                      borderLeft = notif.read ? 'border-l-4 border-l-slate-200' : 'border-l-4 border-l-amber-500';
-                    } else if (notif.type === 'success') {
-                      iconBg = 'bg-emerald-50 text-emerald-600';
-                      icon = <CheckCircle2 size={14} />;
-                      borderLeft = notif.read ? 'border-l-4 border-l-slate-200' : 'border-l-4 border-l-emerald-500';
-                    } else if (notif.type === 'system') {
-                      iconBg = 'bg-slate-100 text-slate-600';
-                      icon = <Info size={14} />;
-                      borderLeft = notif.read ? 'border-l-4 border-l-slate-200' : 'border-l-4 border-l-slate-500';
-                    }
-
-                    return (
-                      <div
-                        key={notif.id}
-                        onClick={() => toggleReadNotification(notif.id)}
-                        className={`p-3.5 hover:bg-slate-50/50 cursor-pointer flex gap-3 transition-colors ${borderLeft} ${notif.read ? 'opacity-60' : ''}`}
-                      >
-                        <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${iconBg}`}>
-                          {icon}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex justify-between items-start gap-2">
-                            <h4 className={`text-xs font-bold text-gray-800 truncate ${!notif.read ? 'font-extrabold text-slate-950' : ''}`}>
-                              {notif.title}
-                            </h4>
-                            <span className="text-[9px] font-semibold text-gray-400 shrink-0 uppercase tracking-tighter">
-                              {formatNotifTime(notif.timestamp)}
-                            </span>
-                          </div>
-                          <p className={`text-[11px] text-gray-500 mt-0.5 leading-normal ${!notif.read ? 'text-gray-700 font-medium' : ''}`}>
-                            {notif.message}
-                          </p>
-                        </div>
-                        <button
-                          onClick={(e) => deleteNotification(notif.id, e)}
-                          className="text-gray-300 hover:text-red-500 self-center p-1 rounded-md transition"
-                        >
-                          <X size={12} />
-                        </button>
-                      </div>
-                    );
-                  })
-                )}
+                <button 
+                  onClick={() => setShowNotifCenter(false)}
+                  className="p-1 hover:bg-white/10 rounded-lg text-slate-400 hover:text-white transition"
+                >
+                  <X size={15} />
+                </button>
               </div>
             </div>
-          )}
-        </div>
-      </div>
+
+            {/* Notification Drawer Content */}
+            <div className="flex-1 overflow-y-auto divide-y divide-gray-100 min-h-0 bg-slate-50/30">
+              {notifications.length === 0 ? (
+                <div className="py-20 px-6 text-center text-gray-400 flex flex-col items-center justify-center gap-4">
+                  <div className="p-4 bg-white rounded-full text-gray-300 border border-gray-100 shadow-sm">
+                    <Bell size={32} />
+                  </div>
+                  <div>
+                    <p className="text-xs font-bold text-gray-500">수신된 알림이 없습니다</p>
+                    <p className="text-[10px] text-gray-400 mt-1 max-w-[220px] mx-auto leading-relaxed">
+                      매장 운영, 주문 접수 및 실시간 재고 경고 등 유익한 정보들이 제공됩니다.
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                notifications.map(notif => {
+                  let iconBg = 'bg-gray-100 text-gray-500 border-gray-200';
+                  let icon = <Info size={14} />;
+                  let borderLeft = 'border-l-4 border-l-transparent';
+                  
+                  if (notif.type === 'order') {
+                    iconBg = 'bg-indigo-50 text-indigo-600 border border-indigo-100';
+                    icon = <ShoppingBag size={14} />;
+                    borderLeft = notif.read ? 'border-l-4 border-l-slate-200' : 'border-l-4 border-l-indigo-500';
+                  } else if (notif.type === 'stock') {
+                    iconBg = 'bg-amber-50 text-amber-600 border border-amber-100';
+                    icon = <AlertTriangle size={14} />;
+                    borderLeft = notif.read ? 'border-l-4 border-l-slate-200' : 'border-l-4 border-l-amber-500';
+                  } else if (notif.type === 'success') {
+                    iconBg = 'bg-emerald-50 text-emerald-600 border border-emerald-100';
+                    icon = <CheckCircle2 size={14} />;
+                    borderLeft = notif.read ? 'border-l-4 border-l-slate-200' : 'border-l-4 border-l-emerald-500';
+                  } else if (notif.type === 'system') {
+                    iconBg = 'bg-slate-100 text-slate-600 border border-slate-200';
+                    icon = <Info size={14} />;
+                    borderLeft = notif.read ? 'border-l-4 border-l-slate-200' : 'border-l-4 border-l-slate-500';
+                  }
+
+                  return (
+                    <div
+                      key={notif.id}
+                      onClick={() => toggleReadNotification(notif.id)}
+                      className={`p-4 hover:bg-slate-50/70 cursor-pointer flex gap-3.5 transition-colors ${borderLeft} ${notif.read ? 'opacity-60 bg-gray-50/30' : 'bg-white'}`}
+                    >
+                      <div className={`w-9 h-9 rounded-2xl flex items-center justify-center shrink-0 shadow-sm ${iconBg}`}>
+                        {icon}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex justify-between items-start gap-2">
+                          <h4 className={`text-xs font-bold text-gray-800 truncate ${!notif.read ? 'font-extrabold text-slate-950' : ''}`}>
+                            {notif.title}
+                          </h4>
+                          <span className="text-[9px] font-semibold text-gray-400 shrink-0 uppercase tracking-tighter">
+                            {formatNotifTime(notif.timestamp)}
+                          </span>
+                        </div>
+                        <p className={`text-[11px] text-gray-500 mt-1 leading-relaxed ${!notif.read ? 'text-gray-700 font-medium' : ''}`}>
+                          {notif.message}
+                        </p>
+                      </div>
+                      <button
+                        onClick={(e) => deleteNotification(notif.id, e)}
+                        className="text-gray-300 hover:text-red-500 self-center p-1.5 rounded-lg hover:bg-gray-100 transition shrink-0"
+                        title="삭제"
+                      >
+                        <X size={12} />
+                      </button>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        </>
+      )}
 
       {/* Toast Notification Feed Overlay */}
       <div className="fixed bottom-6 right-6 z-50 flex flex-col gap-2 max-w-sm w-full pointer-events-none px-4 sm:px-0">

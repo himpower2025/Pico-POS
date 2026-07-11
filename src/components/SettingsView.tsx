@@ -214,48 +214,50 @@ const SettingsView: React.FC<SettingsViewProps> = ({
          onTouchEnd={handleDragEnd}
     >
       {/* Header */}
-      <div className="bg-white border-b border-gray-200 px-6 py-4 flex justify-between items-center shrink-0">
-         <h1 className="text-2xl font-bold text-gray-900">Store Settings</h1>
-         <div className="flex gap-2">
+      <div className="bg-white border-b border-gray-200 px-4 py-3 sm:px-6 sm:py-4 flex flex-col lg:flex-row lg:justify-between lg:items-center gap-3 shrink-0">
+         <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Store Settings</h1>
+         
+         {/* Responsive Horizontal Scrollable Tabs on Mobile/Tablet */}
+         <div className="flex gap-1.5 overflow-x-auto pb-1 lg:pb-0 whitespace-nowrap -mx-4 px-4 sm:mx-0 sm:px-0 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
             <button 
                 onClick={() => setActiveTab('profile')}
-                className={`px-4 py-2 rounded-lg font-medium text-sm transition ${activeTab === 'profile' ? 'bg-indigo-600 text-white' : 'text-gray-600 hover:bg-gray-100'}`}
+                className={`px-3 py-1.5 sm:px-4 sm:py-2 rounded-lg font-bold text-xs sm:text-sm transition duration-200 ${activeTab === 'profile' ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/20' : 'text-gray-600 hover:bg-gray-100'}`}
             >
                 Profile
             </button>
             <button 
                 onClick={() => setActiveTab('menu')}
-                className={`px-4 py-2 rounded-lg font-medium text-sm transition ${activeTab === 'menu' ? 'bg-indigo-600 text-white' : 'text-gray-600 hover:bg-gray-100'}`}
+                className={`px-3 py-1.5 sm:px-4 sm:py-2 rounded-lg font-bold text-xs sm:text-sm transition duration-200 ${activeTab === 'menu' ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/20' : 'text-gray-600 hover:bg-gray-100'}`}
             >
                 Menu
             </button>
             <button 
                 onClick={() => setActiveTab('floor')}
-                className={`px-4 py-2 rounded-lg font-medium text-sm transition ${activeTab === 'floor' ? 'bg-indigo-600 text-white' : 'text-gray-600 hover:bg-gray-100'}`}
+                className={`px-3 py-1.5 sm:px-4 sm:py-2 rounded-lg font-bold text-xs sm:text-sm transition duration-200 ${activeTab === 'floor' ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/20' : 'text-gray-600 hover:bg-gray-100'}`}
             >
                 Floor
             </button>
             <button 
                 onClick={() => setActiveTab('hardware')}
-                className={`px-4 py-2 rounded-lg font-medium text-sm transition flex items-center gap-1 ${activeTab === 'hardware' ? 'bg-indigo-600 text-white' : 'text-gray-600 hover:bg-gray-100'}`}
+                className={`px-3 py-1.5 sm:px-4 sm:py-2 rounded-lg font-bold text-xs sm:text-sm transition duration-200 flex items-center gap-1 ${activeTab === 'hardware' ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/20' : 'text-gray-600 hover:bg-gray-100'}`}
             >
                 Hardware
             </button>
             <button 
                 onClick={() => setActiveTab('subscription')}
-                className={`px-4 py-2 rounded-lg font-medium text-sm transition flex items-center gap-1 ${activeTab === 'subscription' ? 'bg-indigo-600 text-white' : 'text-gray-600 hover:bg-gray-100'}`}
+                className={`px-3 py-1.5 sm:px-4 sm:py-2 rounded-lg font-bold text-xs sm:text-sm transition duration-200 flex items-center gap-1 ${activeTab === 'subscription' ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/20' : 'text-gray-600 hover:bg-gray-100'}`}
             >
                 Subscription
             </button>
             <button 
                 onClick={() => setActiveTab('legal')}
-                className={`px-4 py-2 rounded-lg font-medium text-sm transition flex items-center gap-1 ${activeTab === 'legal' ? 'bg-indigo-600 text-white' : 'text-gray-600 hover:bg-gray-100'}`}
+                className={`px-3 py-1.5 sm:px-4 sm:py-2 rounded-lg font-bold text-xs sm:text-sm transition duration-200 flex items-center gap-1 ${activeTab === 'legal' ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/20' : 'text-gray-600 hover:bg-gray-100'}`}
             >
                 Legal
             </button>
             <button 
                 onClick={() => setActiveTab('about')}
-                className={`px-4 py-2 rounded-lg font-medium text-sm transition ${activeTab === 'about' ? 'bg-indigo-600 text-white' : 'text-gray-600 hover:bg-gray-100'}`}
+                className={`px-3 py-1.5 sm:px-4 sm:py-2 rounded-lg font-bold text-xs sm:text-sm transition duration-200 ${activeTab === 'about' ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/20' : 'text-gray-600 hover:bg-gray-100'}`}
             >
                 About
             </button>
