@@ -119,18 +119,10 @@ const INITIAL_MENU: MenuItem[] = [
 
 // Initialize tables with some default grid-like coordinates (percentages)
 const INITIAL_TABLES: Table[] = [
-  { id: 1, label: 'T-1', x: 5, y: 5, status: 'empty' },
-  { id: 2, label: 'T-2', x: 25, y: 5, status: 'empty' },
-  { id: 3, label: 'T-3', x: 45, y: 5, status: 'empty' },
-  { id: 4, label: 'T-4', x: 5, y: 30, status: 'empty' },
-  { id: 5, label: 'T-5', x: 25, y: 30, status: 'empty' },
-  { id: 6, label: 'T-6', x: 45, y: 30, status: 'empty' },
-  { id: 7, label: 'VIP-1', x: 70, y: 5, status: 'empty' },
-  { id: 8, label: 'VIP-2', x: 70, y: 30, status: 'empty' },
-  { id: 9, label: 'W-1', x: 5, y: 60, status: 'empty' },
-  { id: 10, label: 'W-2', x: 25, y: 60, status: 'empty' },
-  { id: 11, label: 'W-3', x: 45, y: 60, status: 'empty' },
-  { id: 12, label: 'Patio', x: 70, y: 60, status: 'empty' },
+  { id: 1, label: 'T-1', x: 15, y: 15, status: 'empty' },
+  { id: 2, label: 'T-2', x: 55, y: 15, status: 'empty' },
+  { id: 3, label: 'VIP-1', x: 15, y: 55, status: 'empty' },
+  { id: 4, label: 'Patio', x: 55, y: 55, status: 'empty' },
 ];
 
 const App: React.FC = () => {

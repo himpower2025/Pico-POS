@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { CreditCard, Wifi, Edit, Plus, Trash2, LayoutTemplate, Coffee, Printer, Bluetooth, Building2, PaintBucket, CloudSun, ShieldAlert } from 'lucide-react';
+import { CreditCard, Wifi, Edit, Plus, Trash2, LayoutTemplate, Coffee, Printer, Bluetooth, Building2, PaintBucket, CloudSun, ShieldAlert, RefreshCw, Camera, Upload, Image as ImageIcon } from 'lucide-react';
 import { StoreProfile, MenuItem, Table } from '../types';
 import { formatCurrency } from '../lib/utils';
 import { LegalDocsView } from './LegalDocs';
@@ -92,6 +92,47 @@ const SettingsView: React.FC<SettingsViewProps> = ({
   
   // Menu Editor State
   const [editingItem, setEditingItem] = useState<Partial<MenuItem> | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+        const img = new globalThis.Image();
+        img.onload = () => {
+            const canvas = document.createElement('canvas');
+            const MAX_WIDTH = 300;
+            const MAX_HEIGHT = 300;
+            let width = img.width;
+            let height = img.height;
+
+            if (width > height) {
+                if (width > MAX_WIDTH) {
+                    height *= MAX_WIDTH / width;
+                    width = MAX_WIDTH;
+                }
+            } else {
+                if (height > MAX_HEIGHT) {
+                    width *= MAX_HEIGHT / height;
+                    height = MAX_HEIGHT;
+                }
+            }
+
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            if (ctx) {
+                ctx.drawImage(img, 0, 0, width, height);
+                const compressedBase64 = canvas.toDataURL('image/jpeg', 0.82);
+                setEditingItem(prev => prev ? { ...prev, image: compressedBase64 } : null);
+            }
+        };
+        img.src = event.target?.result as string;
+    };
+    reader.readAsDataURL(file);
+  };
 
   // Floor Plan State
   const floorRef = useRef<HTMLDivElement>(null);
@@ -142,6 +183,17 @@ const SettingsView: React.FC<SettingsViewProps> = ({
           y: 10, 
           status: 'empty' 
       }]);
+  };
+
+  const handleResetTables = () => {
+      if (confirm("테이블 배치를 기본 레이아웃(4개 테이블)으로 초기화하시겠습니까? 현재 레이아웃은 삭제됩니다.")) {
+          onUpdateTables([
+              { id: 1, label: 'T-1', x: 15, y: 15, status: 'empty' },
+              { id: 2, label: 'T-2', x: 55, y: 15, status: 'empty' },
+              { id: 3, label: 'VIP-1', x: 15, y: 55, status: 'empty' },
+              { id: 4, label: 'Patio', x: 55, y: 55, status: 'empty' },
+          ]);
+      }
   };
 
   const handleRemoveTable = (id: number) => {
@@ -522,12 +574,59 @@ const SettingsView: React.FC<SettingsViewProps> = ({
                                     onChange={e => setEditingItem({...editingItem, stock: Number(e.target.value)})}
                                     className="px-4 py-2 border rounded-lg"
                                 />
-                                <input 
-                                    placeholder="Image URL" 
-                                    value={editingItem.image || ''}
-                                    onChange={e => setEditingItem({...editingItem, image: e.target.value})}
-                                    className="px-4 py-2 border rounded-lg md:col-span-2"
-                                />
+                                <div className="md:col-span-2 flex flex-col sm:flex-row items-center gap-4 border border-dashed border-indigo-200 bg-indigo-50/20 p-4 rounded-xl">
+                                    {editingItem.image ? (
+                                        <div className="relative group shrink-0">
+                                            <img 
+                                                src={editingItem.image} 
+                                                alt="Preview" 
+                                                className="w-20 h-20 rounded-xl object-cover bg-gray-100 border border-indigo-100 shadow-sm"
+                                            />
+                                            <button 
+                                                type="button"
+                                                onClick={() => setEditingItem({ ...editingItem, image: '' })}
+                                                className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 text-white text-[10px] rounded-full flex items-center justify-center hover:bg-red-600 transition"
+                                                title="Remove image"
+                                            >
+                                                X
+                                            </button>
+                                        </div>
+                                    ) : (
+                                        <div className="w-20 h-20 rounded-xl bg-indigo-50/50 border border-indigo-100/50 flex flex-col items-center justify-center text-indigo-400 shrink-0">
+                                            <ImageIcon size={24} />
+                                            <span className="text-[9px] font-bold mt-1">No Image</span>
+                                        </div>
+                                    )}
+
+                                    <div className="flex-1 w-full space-y-2.5">
+                                        <div className="flex flex-wrap items-center gap-2">
+                                            <button
+                                                type="button"
+                                                onClick={() => fileInputRef.current?.click()}
+                                                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-extrabold flex items-center gap-1.5 shadow-sm transition-all duration-200 active:scale-95"
+                                            >
+                                                <Camera size={14} />
+                                                사진 촬영 및 업로드
+                                            </button>
+                                            <span className="text-[10px] text-gray-400 font-medium">모바일 카메라 촬영 또는 갤러리 지원</span>
+                                            <input 
+                                                type="file"
+                                                ref={fileInputRef}
+                                                onChange={handleImageUpload}
+                                                accept="image/*"
+                                                className="hidden"
+                                            />
+                                        </div>
+                                        <div className="relative">
+                                            <input 
+                                                placeholder="또는 이미지 주소(URL) 직접 입력" 
+                                                value={editingItem.image || ''}
+                                                onChange={e => setEditingItem({...editingItem, image: e.target.value})}
+                                                className="w-full px-3 py-1.5 border border-gray-200 rounded-lg text-xs"
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
                             <div className="flex justify-end gap-2 mt-4">
                                 <button onClick={() => setEditingItem(null)} className="px-4 py-2 text-gray-500 hover:bg-gray-100 rounded-lg">Cancel</button>
@@ -593,9 +692,17 @@ const SettingsView: React.FC<SettingsViewProps> = ({
 
                             <button 
                                 onClick={handleAddTable}
-                                className="bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 px-4 py-2 rounded-xl font-bold flex items-center gap-2 shadow-sm"
+                                className="bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 px-4 py-2 rounded-xl font-bold flex items-center gap-2 shadow-sm transition"
                             >
                                 <LayoutTemplate size={18} /> Add Table
+                            </button>
+
+                            <button 
+                                onClick={handleResetTables}
+                                className="bg-red-50 border border-red-200 hover:bg-red-100 text-red-600 px-4 py-2 rounded-xl font-bold flex items-center gap-2 shadow-sm transition"
+                                title="Reset tables to default 4-table layout"
+                            >
+                                <RefreshCw size={16} /> Reset (1/3)
                             </button>
                         </div>
                     </div>
