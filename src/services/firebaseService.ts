@@ -218,15 +218,18 @@ export const placeFirebaseOrder = async (
     timestamp: order.timestamp.toISOString ? order.timestamp.toISOString() : new Date(order.timestamp).toISOString()
   });
 
-  // Increment summary metrics atomically
-  await setDoc(dailySummaryRef, {
-    date: dateStr,
-    revenue: increment(order.total),
-    profit: increment(profit),
-    orderCount: increment(1)
-  }, { merge: true });
-
-  console.log(`[Firebase Aggregation] Order ${order.id} saved. Atomic summary updated for ${dateStr}.`);
+  // Increment summary metrics atomically ONLY if order is completed (paid)
+  if (order.status === 'completed') {
+    await setDoc(dailySummaryRef, {
+      date: dateStr,
+      revenue: increment(order.total),
+      profit: increment(profit),
+      orderCount: increment(1)
+    }, { merge: true });
+    console.log(`[Firebase Aggregation] Order ${order.id} saved. Atomic summary updated for ${dateStr}.`);
+  } else {
+    console.log(`[Firebase Aggregation] Kitchen ticket ${order.id} (${order.status}) saved. Summary metrics not modified.`);
+  }
 };
 
 /**

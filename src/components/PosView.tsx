@@ -271,63 +271,168 @@ const PosView: React.FC<PosViewProps> = ({
             </div>
          </div>
          
-         <div className="flex-1 relative overflow-hidden m-6 bg-white rounded-3xl shadow-sm border border-slate-200">
-              {/* Background Grid Pattern */}
-              <div className="absolute inset-0 opacity-20" 
-                   style={{ backgroundImage: 'radial-gradient(#94a3b8 2px, transparent 2px)', backgroundSize: '40px 40px' }}>
+         <div className="flex-1 flex flex-col xl:flex-row gap-6 m-6 min-h-0 overflow-hidden">
+              {/* Left Column: Tables Map */}
+              <div className="flex-1 relative overflow-hidden bg-white rounded-3xl shadow-sm border border-slate-200 min-h-[400px]">
+                  {/* Background Grid Pattern */}
+                  <div className="absolute inset-0 opacity-20" 
+                       style={{ backgroundImage: 'radial-gradient(#94a3b8 2px, transparent 2px)', backgroundSize: '40px 40px' }}>
+                  </div>
+
+                  {/* Stretched Tables Map for the active floor */}
+                  {visibleTables.length === 0 ? (
+                    <div className="absolute inset-0 flex flex-col items-center justify-center text-gray-400 gap-2">
+                      <Map size={36} className="opacity-40" />
+                      <p className="text-sm font-semibold">No tables designed for Floor {selectedFloor}F yet.</p>
+                      <p className="text-xs text-gray-500">Add tables to this floor inside Settings View.</p>
+                    </div>
+                  ) : (
+                    visibleTables.map(table => {
+                      const { stretchedY } = getTableFloorAndStretchedY(table);
+                      // Ensure table stays securely inside the visual boundary card
+                      const safeStretchedY = Math.max(5, Math.min(85, stretchedY));
+                      
+                      const activeOrder = getActiveOrderForTable(table.id);
+                      const isOccupied = table.status === 'occupied' || !!activeOrder;
+
+                      return (
+                        <button
+                          key={table.id}
+                          onClick={() => handleTableClick(table.id)}
+                          style={{ left: `${table.x}%`, top: `${safeStretchedY}%` }}
+                          className={`
+                            absolute w-24 h-24 md:w-28 md:h-28 rounded-full border-4 shadow-lg transition-all transform hover:scale-105
+                            flex flex-col items-center justify-center gap-0.5 z-10
+                            ${isOccupied 
+                              ? 'bg-orange-50 border-orange-400 text-orange-800' 
+                              : 'bg-white border-gray-200 text-gray-600 hover:border-indigo-500 hover:text-indigo-600'}
+                          `}
+                        >
+                          <User size={20} className={isOccupied ? 'fill-orange-200 text-orange-500' : 'text-gray-300'} />
+                          <span className="font-extrabold text-sm md:text-base leading-none mb-0.5">{table.label}</span>
+                          
+                          {isOccupied && activeOrder && (
+                            <div className="flex flex-col items-center gap-0.5">
+                              <span className={`text-[8px] font-black uppercase tracking-wider px-1 py-0.5 rounded-md ${
+                                activeOrder.status === 'ready'
+                                  ? 'bg-emerald-100 text-emerald-800 animate-pulse'
+                                  : activeOrder.status === 'cooking'
+                                    ? 'bg-indigo-100 text-indigo-800'
+                                    : 'bg-orange-100 text-orange-800'
+                              }`}>
+                                {activeOrder.status}
+                              </span>
+                              <span className="text-[9px] font-bold text-orange-700 bg-orange-100/50 px-1 rounded">
+                                {formatCurrency(activeOrder.total, storeProfile.currency)}
+                              </span>
+                            </div>
+                          )}
+                        </button>
+                      );
+                    })
+                  )}
+
+                  {/* Entrance Indicator */}
+                  <div className="absolute bottom-0 left-1/2 -translate-x-1/2 bg-slate-200 px-8 py-2 rounded-t-xl text-[10px] font-black text-slate-500 tracking-widest uppercase shadow-inner">
+                     Entrance Gate
+                  </div>
               </div>
 
-              {/* Stretched Tables Map for the active floor */}
-              {visibleTables.length === 0 ? (
-                <div className="absolute inset-0 flex flex-col items-center justify-center text-gray-400 gap-2">
-                  <Map size={36} className="opacity-40" />
-                  <p className="text-sm font-semibold">No tables designed for Floor {selectedFloor}F yet.</p>
-                  <p className="text-xs text-gray-500">Add tables to this floor inside Settings View.</p>
-                </div>
-              ) : (
-                visibleTables.map(table => {
-                  const { stretchedY } = getTableFloorAndStretchedY(table);
-                  // Ensure table stays securely inside the visual boundary card
-                  const safeStretchedY = Math.max(5, Math.min(85, stretchedY));
-                  
-                  const activeOrder = getActiveOrderForTable(table.id);
-                  const isOccupied = table.status === 'occupied' || !!activeOrder;
+              {/* Right Column: Live Bills Summary & Checkout Panel */}
+              <div className="w-full xl:w-96 bg-white rounded-3xl shadow-sm border border-slate-200 flex flex-col p-5 overflow-hidden shrink-0">
+                  <div className="flex items-center gap-2 pb-3 border-b border-gray-100 shrink-0">
+                      <span className="relative flex h-2 w-2">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-orange-400 opacity-75"></span>
+                        <span className="relative inline-flex rounded-full h-2 w-2 bg-orange-500"></span>
+                      </span>
+                      <h3 className="font-extrabold text-xs text-slate-800 uppercase tracking-wider">
+                          Live Active Bills ({tables.filter(t => t.status === 'occupied').length})
+                      </h3>
+                  </div>
 
-                  return (
-                    <button
-                      key={table.id}
-                      onClick={() => handleTableClick(table.id)}
-                      style={{ left: `${table.x}%`, top: `${safeStretchedY}%` }}
-                      className={`
-                        absolute w-24 h-24 md:w-28 md:h-28 rounded-full border-4 shadow-lg transition-all transform hover:scale-105
-                        flex flex-col items-center justify-center gap-1 z-10
-                        ${isOccupied 
-                          ? 'bg-orange-50 border-orange-400 text-orange-800' 
-                          : 'bg-white border-gray-200 text-gray-600 hover:border-indigo-500 hover:text-indigo-600'}
-                      `}
-                    >
-                      <User size={24} className={isOccupied ? 'fill-orange-200 text-orange-500' : 'text-gray-300'} />
-                      <span className="font-extrabold text-base md:text-lg leading-tight">{table.label}</span>
-                      
-                      {isOccupied && activeOrder && (
-                        <span className={`text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded-md ${
-                          activeOrder.status === 'ready'
-                            ? 'bg-emerald-100 text-emerald-800 animate-pulse'
-                            : activeOrder.status === 'cooking'
-                              ? 'bg-indigo-100 text-indigo-800'
-                              : 'bg-orange-100 text-orange-800'
-                        }`}>
-                          {activeOrder.status}
-                        </span>
+                  <div className="flex-1 overflow-y-auto py-2 divide-y divide-gray-100 scrollbar-hide">
+                      {tables.filter(t => t.status === 'occupied').length === 0 ? (
+                        <div className="h-full flex flex-col items-center justify-center text-center text-gray-400 py-16 px-4">
+                            <ChefHat size={32} className="opacity-30 mb-2" />
+                            <p className="text-xs font-bold text-slate-500">No active tables right now</p>
+                            <p className="text-[10px] text-gray-400 mt-1 max-w-[200px] leading-relaxed">
+                              Select a table on the map to start an order and send it to the kitchen.
+                            </p>
+                        </div>
+                      ) : (
+                        tables.filter(t => t.status === 'occupied').map(t => {
+                          const order = getActiveOrderForTable(t.id);
+                          if (!order) return null;
+                          const { floor } = getTableFloorAndStretchedY(t);
+                          return (
+                            <div key={t.id} className="py-3.5 flex flex-col gap-2">
+                                <div className="flex items-start justify-between">
+                                    <div>
+                                        <div className="flex items-center gap-1.5">
+                                            <span className="font-extrabold text-slate-800 text-sm">{t.label}</span>
+                                            <span className="bg-slate-200 text-slate-600 text-[9px] font-bold px-1.5 py-0.5 rounded-full">{floor}F</span>
+                                        </div>
+                                        <div className="text-[10px] text-gray-400 mt-0.5">
+                                            {order.items.length} items ordered
+                                        </div>
+                                    </div>
+                                    <span className={`text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md ${
+                                      order.status === 'ready'
+                                        ? 'bg-emerald-100 text-emerald-800 animate-pulse'
+                                        : order.status === 'cooking'
+                                          ? 'bg-indigo-100 text-indigo-800'
+                                          : 'bg-orange-100 text-orange-800'
+                                    }`}>
+                                      {order.status}
+                                    </span>
+                                </div>
+
+                                <div className="bg-slate-50 p-2 rounded-xl text-[11px] text-slate-600 font-mono space-y-0.5">
+                                    {order.items.slice(0, 3).map((item, idx) => (
+                                        <div key={idx} className="flex justify-between">
+                                            <span className="truncate max-w-[150px]">{item.name} x{item.quantity}</span>
+                                            <span>{formatCurrency(item.price * item.quantity, storeProfile.currency)}</span>
+                                        </div>
+                                    ))}
+                                    {order.items.length > 3 && (
+                                        <div className="text-gray-400 text-[9px] italic pl-1">and {order.items.length - 3} more...</div>
+                                    )}
+                                </div>
+
+                                <div className="flex items-center justify-between px-1">
+                                    <span className="text-xs font-bold text-slate-500">Total Bill</span>
+                                    <span className="font-black text-sm text-indigo-600">{formatCurrency(order.total, storeProfile.currency)}</span>
+                                </div>
+
+                                <div className="flex gap-2 shrink-0">
+                                  <button
+                                    onClick={() => handleTableClick(t.id)}
+                                    className="flex-1 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 font-bold py-1.5 rounded-lg text-[10px] flex items-center justify-center gap-1 transition active:scale-95 shadow-sm"
+                                  >
+                                     <ShoppingCart size={11} />
+                                     Add Items
+                                  </button>
+                                  <button
+                                    onClick={() => {
+                                      onPlaceOrder(
+                                        t.id, 
+                                        order.items, 
+                                        order.total, 
+                                        'completed', 
+                                        order.id
+                                      );
+                                    }}
+                                    className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-1.5 rounded-lg text-[10px] flex items-center justify-center gap-1 transition active:scale-95 shadow-sm border border-indigo-500"
+                                  >
+                                     <Printer size={11} />
+                                     Pay & Print
+                                  </button>
+                                </div>
+                            </div>
+                          );
+                        })
                       )}
-                    </button>
-                  );
-                })
-              )}
-
-              {/* Entrance Indicator */}
-              <div className="absolute bottom-0 left-1/2 -translate-x-1/2 bg-slate-200 px-8 py-2 rounded-t-xl text-[10px] font-black text-slate-500 tracking-widest uppercase shadow-inner">
-                 Entrance Gate
+                  </div>
               </div>
          </div>
       </div>

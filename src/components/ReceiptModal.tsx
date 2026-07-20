@@ -31,6 +31,26 @@ const ReceiptModal: React.FC<ReceiptModalProps> = ({ order, onClose, storeProfil
     return (localStorage.getItem('pico_printer_papersize') as '58mm' | '80mm') || '58mm';
   });
 
+  const formatOrderDate = (timestamp: any) => {
+    if (!timestamp) return '';
+    if (timestamp instanceof Date) {
+      return timestamp.toLocaleString('en-US');
+    }
+    // Handle Firestore Timestamp
+    if (typeof timestamp.toDate === 'function') {
+      return timestamp.toDate().toLocaleString('en-US');
+    }
+    if (timestamp.seconds) {
+      return new Date(timestamp.seconds * 1000).toLocaleString('en-US');
+    }
+    // Handle string or number ISO/timestamp
+    const d = new Date(timestamp);
+    if (!isNaN(d.getTime())) {
+      return d.toLocaleString('en-US');
+    }
+    return String(timestamp);
+  };
+
   // Keep global session in sync with local state
   useEffect(() => {
     if (activePrinterSession && activePrinterSession.device.gatt?.connected) {
@@ -125,7 +145,7 @@ const ReceiptModal: React.FC<ReceiptModalProps> = ({ order, onClose, storeProfil
                 </p>
                 <div className="my-3 border-t border-dashed border-gray-300"></div>
                 <p>ORDER #{order.id.slice(0, 8)}</p>
-                <p>{order.timestamp.toLocaleString('en-US')}</p>
+                <p>{formatOrderDate(order.timestamp)}</p>
             </div>
 
             <div className="mb-4">

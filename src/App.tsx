@@ -259,7 +259,9 @@ const App: React.FC = () => {
         t.id === tableId ? { ...t, status: nextTableStatus, currentOrderId: status === 'pending' ? newOrder.id : undefined } : t
     );
     setTables(updatedTables);
-    await saveTablesToFirebase(storeProfile, updatedTables);
+    saveTablesToFirebase(storeProfile, updatedTables).catch(err => {
+      console.error("Failed to save tables to Firebase:", err);
+    });
 
     // 3. Deduct Stock from Menu locally & sync delta changed items to cloud (only for new items, or simple total reduction)
     const updatedMenu = menu.map(menuItem => {
@@ -285,12 +287,20 @@ const App: React.FC = () => {
     });
     setMenu(updatedMenu);
 
-    // 4. Save order & atomically increment daily statistics (only increment statistics for finalized completed orders)
-    await placeFirebaseOrder(storeProfile, newOrder, menu);
-
+    // 4. Set receipt overlay immediately if completed (optimistic UI)
     if (status === 'completed') {
       setLastOrder(newOrder);
     }
+
+    // 5. Save order & atomically increment daily statistics in the background
+    placeFirebaseOrder(storeProfile, newOrder, menu).catch(err => {
+      console.error("Failed to save order to Firebase:", err);
+      addNotification(
+        'Cloud Save Error ⚠️',
+        'Unable to sync this transaction to Firebase, but it has been saved locally.',
+        'system'
+      );
+    });
   };
 
   const handleUpdateOrders = async (newOrders: Order[]) => {
