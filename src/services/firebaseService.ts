@@ -230,6 +230,15 @@ export const placeFirebaseOrder = async (
 };
 
 /**
+ * Update an order's status securely on the server
+ */
+export const updateServerOrderStatus = async (profile: StoreProfile, orderId: string, status: string) => {
+  const storeSlug = getStoreSlug(profile);
+  const orderRef = doc(db, `stores/${storeSlug}/orders`, orderId);
+  await updateDoc(orderRef, { status });
+};
+
+/**
  * Handle Order Refunds
  * Refunded order values are deducted from the daily summary automatically
  */

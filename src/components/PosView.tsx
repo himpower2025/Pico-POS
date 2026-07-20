@@ -1,20 +1,43 @@
 import React, { useState } from 'react';
-import { Table, MenuItem, OrderItem, StoreProfile } from '../types';
-import { Coffee, Utensils, CupSoda, Cake, ShoppingCart, User, ChevronRight, Minus, Plus, Map, StickyNote } from 'lucide-react';
+import { Table, MenuItem, OrderItem, StoreProfile, Order } from '../types';
+import { 
+  Coffee, Utensils, CupSoda, Cake, ShoppingCart, User, 
+  ChevronRight, Minus, Plus, Map, StickyNote, ChefHat, 
+  Printer, Trash2, HelpCircle 
+} from 'lucide-react';
 import { formatCurrency } from '../lib/utils';
 
 interface PosViewProps {
   tables: Table[];
   menu: MenuItem[];
-  onPlaceOrder: (tableId: number, items: OrderItem[], total: number) => void;
+  orders: Order[];
+  onUpdateOrders: (orders: Order[]) => void;
+  onUpdateTables: (tables: Table[]) => void;
+  onPlaceOrder: (
+    tableId: number, 
+    items: OrderItem[], 
+    total: number, 
+    status?: 'completed' | 'pending',
+    customOrderId?: string
+  ) => void;
   storeProfile: StoreProfile;
 }
 
-const PosView: React.FC<PosViewProps> = ({ tables, menu, onPlaceOrder, storeProfile }) => {
+const PosView: React.FC<PosViewProps> = ({ 
+  tables, 
+  menu, 
+  orders,
+  onUpdateOrders,
+  onUpdateTables,
+  onPlaceOrder, 
+  storeProfile 
+}) => {
   const [selectedTableId, setSelectedTableId] = useState<number | null>(null);
   const [currentOrder, setCurrentOrder] = useState<OrderItem[]>([]);
   const [activeCategory, setActiveCategory] = useState<string>('all');
   const [noteInputId, setNoteInputId] = useState<string | null>(null); // Track which item is adding a note
+  const [selectedFloor, setSelectedFloor] = useState<number>(1);
+  
   const floorCount = storeProfile.floorCount !== undefined ? storeProfile.floorCount : 3;
 
   const categories = [
@@ -29,9 +52,41 @@ const PosView: React.FC<PosViewProps> = ({ tables, menu, onPlaceOrder, storeProf
     ? menu 
     : menu.filter(item => item.category === activeCategory);
 
+  // Helper to resolve which floor a table belongs to, and return a stretched Y coordinate (0-100%)
+  const getTableFloorAndStretchedY = (table: Table) => {
+    if (floorCount === 3) {
+      if (table.y < 33.3) {
+        return { floor: 3, stretchedY: table.y * 3 };
+      } else if (table.y < 66.6) {
+        return { floor: 2, stretchedY: (table.y - 33.3) * 3 };
+      } else {
+        return { floor: 1, stretchedY: (table.y - 66.6) * 3 };
+      }
+    } else if (floorCount === 2) {
+      if (table.y < 50) {
+        return { floor: 2, stretchedY: table.y * 2 };
+      } else {
+        return { floor: 1, stretchedY: (table.y - 50) * 2 };
+      }
+    } else {
+      return { floor: 1, stretchedY: table.y };
+    }
+  };
+
   const handleTableClick = (id: number) => {
     setSelectedTableId(id);
-    setCurrentOrder([]); 
+    
+    // Find active cooking/pending/ready order for this table
+    const activeOrder = orders.find(
+      o => o.tableId === id && 
+      (o.status === 'pending' || o.status === 'cooking' || o.status === 'ready')
+    );
+
+    if (activeOrder) {
+      setCurrentOrder(activeOrder.items);
+    } else {
+      setCurrentOrder([]);
+    }
   };
 
   const addToOrder = (item: MenuItem) => {
@@ -41,7 +96,6 @@ const PosView: React.FC<PosViewProps> = ({ tables, menu, onPlaceOrder, storeProf
     setCurrentOrder(prev => {
       const existing = prev.find(i => i.id === item.id);
       if (existing) {
-        // Check if we have enough stock to add more
         if (existing.quantity >= item.stock) {
             alert("Not enough stock!");
             return prev;
@@ -58,12 +112,9 @@ const PosView: React.FC<PosViewProps> = ({ tables, menu, onPlaceOrder, storeProf
     setCurrentOrder(prev => prev.map(item => {
       if (item.id === itemId) {
         const newQty = item.quantity + delta;
-        
-        // Stock check on increase
         if (delta > 0 && itemInMenu && newQty > itemInMenu.stock) {
             return item;
         }
-        
         return { ...item, quantity: Math.max(0, newQty) };
       }
       return item;
@@ -78,19 +129,97 @@ const PosView: React.FC<PosViewProps> = ({ tables, menu, onPlaceOrder, storeProf
 
   const orderTotal = currentOrder.reduce((sum, item) => sum + (item.price * item.quantity), 0);
 
-  const handlePayment = () => {
+  // 1. Send to Kitchen (creates/updates pending ticket, table status = occupied)
+  const handleSendToKitchen = () => {
     if (selectedTableId && currentOrder.length > 0) {
-      onPlaceOrder(selectedTableId, currentOrder, orderTotal);
+      const activeOrder = orders.find(
+        o => o.tableId === selectedTableId && 
+        (o.status === 'pending' || o.status === 'cooking' || o.status === 'ready')
+      );
+
+      onPlaceOrder(
+        selectedTableId, 
+        currentOrder, 
+        orderTotal, 
+        'pending', 
+        activeOrder?.id
+      );
+      
       setCurrentOrder([]);
       setSelectedTableId(null);
     }
   };
 
+  // 2. Direct Immediate Payment / Checkout
+  const handlePayment = () => {
+    if (selectedTableId && currentOrder.length > 0) {
+      const activeOrder = orders.find(
+        o => o.tableId === selectedTableId && 
+        (o.status === 'pending' || o.status === 'cooking' || o.status === 'ready')
+      );
+
+      // Charge & complete the transaction
+      onPlaceOrder(
+        selectedTableId, 
+        currentOrder, 
+        orderTotal, 
+        'completed', 
+        activeOrder?.id
+      );
+      
+      setCurrentOrder([]);
+      setSelectedTableId(null);
+    }
+  };
+
+  // 3. Clear Table / Cancel active kitchen ticket
+  const handleCancelActiveTicket = () => {
+    if (!selectedTableId) return;
+    
+    const activeOrder = orders.find(
+      o => o.tableId === selectedTableId && 
+      (o.status === 'pending' || o.status === 'cooking' || o.status === 'ready')
+    );
+
+    if (!activeOrder) return;
+
+    const confirmCancel = window.confirm("Are you sure you want to cancel the active kitchen ticket and free this table?");
+    if (!confirmCancel) return;
+
+    // Free table
+    const updatedTables = tables.map(t => 
+      t.id === selectedTableId ? { ...t, status: 'empty' as const, currentOrderId: undefined } : t
+    );
+    onUpdateTables(updatedTables);
+
+    // Cancel the order (status set to refunded to clear KDS)
+    const updatedOrders = orders.map(o => 
+      o.id === activeOrder.id ? { ...o, status: 'refunded' as const } : o
+    );
+    onUpdateOrders(updatedOrders);
+
+    setCurrentOrder([]);
+    setSelectedTableId(null);
+  };
+
+  const getActiveOrderForTable = (tableId: number) => {
+    return orders.find(
+      o => o.tableId === tableId && 
+      (o.status === 'pending' || o.status === 'cooking' || o.status === 'ready')
+    );
+  };
+
+  // Filter tables to current selected floor
+  const visibleTables = tables.filter(table => {
+    const { floor } = getTableFloorAndStretchedY(table);
+    return floor === selectedFloor;
+  });
+
   // If no table selected, show table MAP
   if (!selectedTableId) {
     return (
       <div className="h-full bg-slate-100 flex flex-col">
-         <div className="p-6 pb-2 shrink-0 flex justify-between items-end">
+         <div className="p-6 pb-2 shrink-0 flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div>
                <div className="flex items-center gap-2.5">
                   <h2 className="text-2xl font-bold text-gray-800">Floor View</h2>
@@ -110,112 +239,111 @@ const PosView: React.FC<PosViewProps> = ({ tables, menu, onPlaceOrder, storeProf
                      </span>
                   )}
                </div>
-               <p className="text-gray-500">Select a table to start an order.</p>
+               <p className="text-gray-500 text-sm mt-0.5">Select a table to start cooking or bill order</p>
             </div>
-           <div className="bg-white px-3 py-1 rounded-full shadow-sm text-xs font-bold text-gray-500 flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-white border-2 border-green-500"></span> Empty
-              <span className="w-2 h-2 rounded-full bg-orange-100 border-2 border-orange-500 ml-2"></span> Occupied
-           </div>
-        </div>
-        
-        <div className="flex-1 relative overflow-hidden m-6 bg-white rounded-3xl shadow-sm border border-slate-200">
-             {/* Background Grid Pattern */}
-             <div className="absolute inset-0 opacity-20" 
-                  style={{ backgroundImage: 'radial-gradient(#94a3b8 2px, transparent 2px)', backgroundSize: '40px 40px' }}>
-             </div>
 
-              {/* Floor Boundary Dividers & Zone Labels */}
-              <div className="absolute inset-0 pointer-events-none select-none z-0">
-                  {floorCount === 3 && (
-                      <>
-                          {/* 3rd Floor Area Label */}
-                          <div className="absolute top-3 left-4 bg-slate-100/80 text-slate-500 backdrop-blur-[2px] px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-widest border border-slate-200 shadow-sm">
-                              3F (3rd Floor)
-                          </div>
+            {/* Floor Swapping Tabs */}
+            {floorCount > 1 && (
+              <div className="flex bg-white p-1 rounded-xl border border-slate-200 self-start md:self-auto text-xs font-bold gap-1 shadow-sm">
+                {Array.from({ length: floorCount }, (_, i) => {
+                  const floorNum = i + 1;
+                  const label = floorNum === 1 ? '1F (Main)' : `${floorNum}F`;
+                  return (
+                    <button
+                      key={floorNum}
+                      onClick={() => setSelectedFloor(floorNum)}
+                      className={`px-4 py-2 rounded-lg transition-all ${
+                        selectedFloor === floorNum 
+                          ? 'bg-indigo-600 text-white shadow-md font-bold' 
+                          : 'text-gray-500 hover:text-gray-900 font-medium hover:bg-slate-50'
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
 
-                          {/* Divider between 3F and 2F */}
-                          <div className="absolute top-[33.3%] left-0 right-0 border-t border-dashed border-slate-200 flex justify-end">
-                              <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mr-4 -mt-2 bg-white px-1.5 py-0.5 rounded border border-slate-100 shadow-sm">3F / 2F Boundary</span>
-                          </div>
-
-                          {/* 2nd Floor Area Label */}
-                          <div className="absolute top-[36%] left-4 bg-slate-100/80 text-slate-500 backdrop-blur-[2px] px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-widest border border-slate-200 shadow-sm">
-                              2F (2nd Floor)
-                          </div>
-
-                          {/* Divider between 2F and 1F */}
-                          <div className="absolute top-[66.6%] left-0 right-0 border-t border-dashed border-slate-200 flex justify-end">
-                              <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mr-4 -mt-2 bg-white px-1.5 py-0.5 rounded border border-slate-100 shadow-sm">2F / 1F Boundary</span>
-                          </div>
-
-                          {/* 1st Floor Area Label */}
-                          <div className="absolute top-[69%] left-4 bg-slate-100/80 text-slate-500 backdrop-blur-[2px] px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-widest border border-slate-200 shadow-sm">
-                              1F (1st Floor / Reception)
-                          </div>
-                      </>
-                  )}
-
-                  {floorCount === 2 && (
-                      <>
-                          {/* 2nd Floor Area Label */}
-                          <div className="absolute top-3 left-4 bg-slate-100/80 text-slate-500 backdrop-blur-[2px] px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-widest border border-slate-200 shadow-sm">
-                              2F (2nd Floor)
-                          </div>
-
-                          {/* Divider between 2F and 1F */}
-                          <div className="absolute top-[50%] left-0 right-0 border-t border-dashed border-slate-200 flex justify-end">
-                              <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mr-4 -mt-2 bg-white px-1.5 py-0.5 rounded border border-slate-100 shadow-sm">2F / 1F Boundary</span>
-                          </div>
-
-                          {/* 1st Floor Area Label */}
-                          <div className="absolute top-[53%] left-4 bg-slate-100/80 text-slate-500 backdrop-blur-[2px] px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-widest border border-slate-200 shadow-sm">
-                              1F (1st Floor / Reception)
-                          </div>
-                      </>
-                  )}
-
-                  {floorCount === 1 && (
-                      <div className="absolute top-3 left-4 bg-slate-100/80 text-slate-500 backdrop-blur-[2px] px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-widest border border-slate-200 shadow-sm">
-                          Single Floor Layout (1F)
-                      </div>
-                  )}
+            <div className="bg-white px-3 py-1.5 rounded-full shadow-sm text-xs font-bold text-gray-500 flex items-center gap-2 self-start md:self-auto border border-gray-100">
+              <span className="w-2 h-2 rounded-full bg-white border-2 border-green-500"></span> Empty Table
+              <span className="w-2 h-2 rounded-full bg-orange-100 border-2 border-orange-500 ml-2"></span> Active Order
+            </div>
+         </div>
+         
+         <div className="flex-1 relative overflow-hidden m-6 bg-white rounded-3xl shadow-sm border border-slate-200">
+              {/* Background Grid Pattern */}
+              <div className="absolute inset-0 opacity-20" 
+                   style={{ backgroundImage: 'radial-gradient(#94a3b8 2px, transparent 2px)', backgroundSize: '40px 40px' }}>
               </div>
 
-             {tables.map(table => (
-                <button
-                  key={table.id}
-                  onClick={() => handleTableClick(table.id)}
-                  style={{ left: `${table.x}%`, top: `${table.y}%` }}
-                  className={`
-                    absolute w-24 h-24 md:w-28 md:h-28 rounded-full border-4 shadow-lg transition-all transform hover:scale-105
-                    flex flex-col items-center justify-center gap-1 z-10
-                    ${table.status === 'occupied' 
-                      ? 'bg-orange-50 border-orange-400 text-orange-800' 
-                      : 'bg-white border-gray-200 text-gray-600 hover:border-indigo-500 hover:text-indigo-600'}
-                  `}
-                >
-                  <User size={24} className={table.status === 'occupied' ? 'fill-orange-200' : 'text-gray-300'} />
-                  <span className="font-bold text-lg">{table.label}</span>
-                  {table.status === 'occupied' && <span className="text-[10px] font-bold uppercase tracking-wider">Active</span>}
-                </button>
-             ))}
+              {/* Stretched Tables Map for the active floor */}
+              {visibleTables.length === 0 ? (
+                <div className="absolute inset-0 flex flex-col items-center justify-center text-gray-400 gap-2">
+                  <Map size={36} className="opacity-40" />
+                  <p className="text-sm font-semibold">No tables designed for Floor {selectedFloor}F yet.</p>
+                  <p className="text-xs text-gray-500">Add tables to this floor inside Settings View.</p>
+                </div>
+              ) : (
+                visibleTables.map(table => {
+                  const { stretchedY } = getTableFloorAndStretchedY(table);
+                  // Ensure table stays securely inside the visual boundary card
+                  const safeStretchedY = Math.max(5, Math.min(85, stretchedY));
+                  
+                  const activeOrder = getActiveOrderForTable(table.id);
+                  const isOccupied = table.status === 'occupied' || !!activeOrder;
 
-             {/* Entrance Indicator */}
-             <div className="absolute bottom-0 left-1/2 -translate-x-1/2 bg-slate-200 px-8 py-2 rounded-t-xl text-xs font-bold text-slate-500 tracking-widest uppercase shadow-inner">
-                Entrance
-             </div>
-        </div>
+                  return (
+                    <button
+                      key={table.id}
+                      onClick={() => handleTableClick(table.id)}
+                      style={{ left: `${table.x}%`, top: `${safeStretchedY}%` }}
+                      className={`
+                        absolute w-24 h-24 md:w-28 md:h-28 rounded-full border-4 shadow-lg transition-all transform hover:scale-105
+                        flex flex-col items-center justify-center gap-1 z-10
+                        ${isOccupied 
+                          ? 'bg-orange-50 border-orange-400 text-orange-800' 
+                          : 'bg-white border-gray-200 text-gray-600 hover:border-indigo-500 hover:text-indigo-600'}
+                      `}
+                    >
+                      <User size={24} className={isOccupied ? 'fill-orange-200 text-orange-500' : 'text-gray-300'} />
+                      <span className="font-extrabold text-base md:text-lg leading-tight">{table.label}</span>
+                      
+                      {isOccupied && activeOrder && (
+                        <span className={`text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded-md ${
+                          activeOrder.status === 'ready'
+                            ? 'bg-emerald-100 text-emerald-800 animate-pulse'
+                            : activeOrder.status === 'cooking'
+                              ? 'bg-indigo-100 text-indigo-800'
+                              : 'bg-orange-100 text-orange-800'
+                        }`}>
+                          {activeOrder.status}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })
+              )}
+
+              {/* Entrance Indicator */}
+              <div className="absolute bottom-0 left-1/2 -translate-x-1/2 bg-slate-200 px-8 py-2 rounded-t-xl text-[10px] font-black text-slate-500 tracking-widest uppercase shadow-inner">
+                 Entrance Gate
+              </div>
+         </div>
       </div>
     );
   }
 
-  // Ordering Interface
+  // Ordering Interface (Cart view)
+  const isTableOccupied = tables.find(t => t.id === selectedTableId)?.status === 'occupied';
+  const activeOrder = getActiveOrderForTable(selectedTableId);
+
   return (
     <div className="flex h-full bg-white overflow-hidden flex-col lg:flex-row animate-in slide-in-from-right duration-300">
       {/* Menu Section */}
       <div className="flex-1 flex flex-col h-[60%] lg:h-full overflow-hidden border-b lg:border-b-0 lg:border-r border-gray-200">
         {/* Categories */}
-        <div className="p-3 md:p-4 bg-white border-b border-gray-100 overflow-x-auto whitespace-nowrap scrollbar-hide">
+        <div className="p-3 md:p-4 bg-white border-b border-gray-100 overflow-x-auto whitespace-nowrap scrollbar-hide shrink-0">
             <div className="flex gap-2 md:gap-3">
               <button 
                 onClick={() => setSelectedTableId(null)}
@@ -268,6 +396,7 @@ const PosView: React.FC<PosViewProps> = ({ tables, menu, onPlaceOrder, storeProf
                     <img 
                         src={item.image} 
                         alt={item.name} 
+                        referrerPolicy="no-referrer"
                         className="w-full h-full object-cover transform group-hover:scale-110 transition-transform duration-500" 
                         />
                         <div className="absolute top-2 right-2 bg-black/60 text-white px-2 py-0.5 rounded-md text-[10px] backdrop-blur-sm">
@@ -299,9 +428,26 @@ const PosView: React.FC<PosViewProps> = ({ tables, menu, onPlaceOrder, storeProf
 
       {/* Cart Sidebar */}
       <div className="h-[40%] lg:h-full w-full lg:w-96 bg-white flex flex-col shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)] lg:shadow-xl z-20 shrink-0">
-        <div className="p-4 md:p-6 border-b border-gray-100 bg-gray-50">
-          <div className="flex justify-between items-center mb-1">
+        <div className="p-4 md:p-6 border-b border-gray-100 bg-gray-50 flex justify-between items-center shrink-0">
+          <div>
             <h2 className="text-lg md:text-xl font-bold text-gray-800">Current Order</h2>
+            {activeOrder && (
+              <span className="text-[10px] font-bold text-indigo-600 tracking-wider uppercase block mt-0.5">
+                Kitchen State: {activeOrder.status}
+              </span>
+            )}
+          </div>
+          
+          <div className="flex items-center gap-2">
+            {activeOrder && (
+              <button 
+                onClick={handleCancelActiveTicket}
+                title="Cancel Kitchen Ticket & Clear Table"
+                className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition"
+              >
+                <Trash2 size={18} />
+              </button>
+            )}
             <span className="bg-indigo-100 text-indigo-700 px-3 py-1 rounded-full text-xs md:text-sm font-bold border border-indigo-200">
               {tables.find(t => t.id === selectedTableId)?.label}
             </span>
@@ -319,7 +465,7 @@ const PosView: React.FC<PosViewProps> = ({ tables, menu, onPlaceOrder, storeProf
               <div key={item.id} className="bg-gray-50 p-2 md:p-3 rounded-lg border border-gray-100 group transition-all">
                 <div className="flex gap-3">
                     <div className="w-12 h-12 md:w-16 md:h-16 rounded-md overflow-hidden bg-gray-200 flex-shrink-0">
-                        <img src={item.image} className="w-full h-full object-cover" alt={item.name} />
+                        <img src={item.image} referrerPolicy="no-referrer" className="w-full h-full object-cover" alt={item.name} />
                     </div>
                     <div className="flex-1 flex flex-col justify-between">
                         <div className="flex justify-between items-start">
@@ -369,15 +515,15 @@ const PosView: React.FC<PosViewProps> = ({ tables, menu, onPlaceOrder, storeProf
           )}
         </div>
 
-        <div className="p-4 md:p-6 bg-white border-t border-gray-100 space-y-3 md:space-y-4">
+        <div className="p-4 md:p-6 bg-white border-t border-gray-100 space-y-3 md:space-y-4 shrink-0">
           <div className="space-y-1 md:space-y-2 text-sm md:text-base">
             <div className="flex justify-between text-gray-500">
               <span>Subtotal</span>
               <span>{formatCurrency(orderTotal * 0.87, storeProfile.currency)}</span>
             </div>
             <div className="flex justify-between text-gray-500">
-              <span>VAT (13%)</span>
-              <span>{formatCurrency(orderTotal * 0.13, storeProfile.currency)}</span>
+              <span>VAT ({storeProfile.taxRate || 13}%)</span>
+              <span>{formatCurrency(orderTotal * ((storeProfile.taxRate || 13) / 100), storeProfile.currency)}</span>
             </div>
             <div className="border-t border-dashed border-gray-200 my-2"></div>
             <div className="flex justify-between text-xl md:text-2xl font-bold text-gray-900">
@@ -386,14 +532,27 @@ const PosView: React.FC<PosViewProps> = ({ tables, menu, onPlaceOrder, storeProf
             </div>
           </div>
           
-          <button
-            onClick={handlePayment}
-            disabled={currentOrder.length === 0}
-            className="w-full bg-slate-900 hover:bg-black text-white py-3 md:py-4 rounded-xl font-bold text-base md:text-lg shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 transition-all active:scale-95"
-          >
-            <span>Charge {formatCurrency(orderTotal, storeProfile.currency)}</span>
-            <ChevronRight size={20} />
-          </button>
+          <div className="grid grid-cols-2 gap-2">
+            {/* Action 1: Send to Kitchen */}
+            <button
+              onClick={handleSendToKitchen}
+              disabled={currentOrder.length === 0}
+              className="bg-amber-500 hover:bg-amber-600 text-slate-950 py-3 rounded-xl font-bold text-sm md:text-base disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5 transition-all active:scale-95 border border-amber-400"
+            >
+              <ChefHat size={16} />
+              <span>{activeOrder ? 'Update Kitchen' : 'Kitchen Order'}</span>
+            </button>
+
+            {/* Action 2: Bill / Charge Checkout */}
+            <button
+              onClick={handlePayment}
+              disabled={currentOrder.length === 0}
+              className="bg-indigo-600 hover:bg-indigo-700 text-white py-3 rounded-xl font-bold text-sm md:text-base disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5 transition-all active:scale-95 shadow-md shadow-indigo-100 border border-indigo-500"
+            >
+              <Printer size={16} />
+              <span>Charge & Print</span>
+            </button>
+          </div>
         </div>
       </div>
     </div>

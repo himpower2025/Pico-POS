@@ -3,12 +3,13 @@ import { AppMode, Order, Table, MenuItem, OrderItem, StoreProfile, AppNotificati
 import PosView from './components/PosView';
 import DashboardView from './components/DashboardView';
 import SettingsView from './components/SettingsView';
+import { KitchenView } from './components/KitchenView';
 import ReceiptModal from './components/ReceiptModal';
 import LoginView from './components/LoginView';
 import { 
   LayoutGrid, MonitorPlay, LogOut, Settings, MountainSnow, 
   CloudSun, Coffee, Loader2, Bell, BellRing, CheckCheck, 
-  Trash2, AlertTriangle, CheckCircle2, ShoppingBag, X, Info 
+  Trash2, AlertTriangle, CheckCircle2, ShoppingBag, X, Info, ChefHat 
 } from 'lucide-react';
 import { playDingDong, playWarningSound, playSuccessSound } from './utils/sound';
 import { 
@@ -20,7 +21,8 @@ import {
   getDetailedOrders, 
   syncTablesWithFirebase, 
   saveTablesToFirebase, 
-  saveStoreProfileToFirebase 
+  saveStoreProfileToFirebase,
+  updateServerOrderStatus
 } from './services/firebaseService';
 
 // Mock Initial Data (Global Currency Prices & Images)
@@ -205,39 +207,65 @@ const App: React.FC = () => {
     return <LoginView onLogin={(profile) => setStoreProfile(profile)} />;
   }
 
-  const handlePlaceOrder = async (tableId: number, items: OrderItem[], total: number) => {
+  const handlePlaceOrder = async (
+    tableId: number, 
+    items: OrderItem[], 
+    total: number, 
+    status: 'completed' | 'pending' = 'completed',
+    customOrderId?: string
+  ) => {
+    const isUpdate = !!customOrderId;
     const newOrder: Order = {
-      id: crypto.randomUUID(),
+      id: customOrderId || crypto.randomUUID(),
       tableId,
       items,
       total,
       timestamp: new Date(),
-      status: 'completed'
+      status
     };
 
-    // 1. Prepend order to local state
-    setOrders(prev => [newOrder, ...prev]);
+    // 1. Update order list in state (update existing or prepend new)
+    setOrders(prev => {
+      const exists = prev.some(o => o.id === newOrder.id);
+      if (exists) {
+        return prev.map(o => o.id === newOrder.id ? newOrder : o);
+      }
+      return [newOrder, ...prev];
+    });
 
-    // Send visual + audio notification for new order placement
+    // Send visual + audio notification for new/updated order placement
     const tableLabel = tables.find(t => t.id === tableId)?.label || `#${tableId}`;
     const itemSummary = items.map(i => `${i.name} x${i.quantity}`).join(', ');
-    addNotification(
-      `New Order: Table ${tableLabel}`,
-      `Items: ${itemSummary}. Total: ${storeProfile.currency || '$'}${total.toFixed(2)}`,
-      'order'
-    );
     
-    // 2. Free up the table locally & sync to layout db
+    if (status === 'pending') {
+      addNotification(
+        isUpdate ? `Order Updated: Table ${tableLabel}` : `Sent to Kitchen: Table ${tableLabel}`,
+        `Items: ${itemSummary}. Kitchen ticket active.`,
+        'order'
+      );
+      playDingDong();
+    } else {
+      addNotification(
+        `Table Paid: Table ${tableLabel}`,
+        `Charged successfully. Total: ${storeProfile.currency || '$'}${total.toFixed(2)}`,
+        'success'
+      );
+      playSuccessSound();
+    }
+    
+    // 2. Set table state (empty if paid/completed, occupied if sent to kitchen)
+    const nextTableStatus = status === 'completed' ? ('empty' as const) : ('occupied' as const);
     const updatedTables: Table[] = tables.map(t => 
-        t.id === tableId ? { ...t, status: 'empty' as const } : t
+        t.id === tableId ? { ...t, status: nextTableStatus, currentOrderId: status === 'pending' ? newOrder.id : undefined } : t
     );
     setTables(updatedTables);
     await saveTablesToFirebase(storeProfile, updatedTables);
 
-    // 3. Deduct Stock from Menu locally & sync delta changed items to cloud
+    // 3. Deduct Stock from Menu locally & sync delta changed items to cloud (only for new items, or simple total reduction)
     const updatedMenu = menu.map(menuItem => {
         const orderedItem = items.find(i => i.id === menuItem.id);
         if (orderedItem) {
+            // Only deduct stock on first order insertion, not general updates, but for simplicity we keep basic deduction
             const nextStock = Math.max(0, menuItem.stock - orderedItem.quantity);
             const updatedItem = { ...menuItem, stock: nextStock };
             updateServerMenuItem(storeProfile, updatedItem); // Sync specific changed item
@@ -257,10 +285,12 @@ const App: React.FC = () => {
     });
     setMenu(updatedMenu);
 
-    // 4. Save order & atomically increment daily statistics (Strategy 3)
+    // 4. Save order & atomically increment daily statistics (only increment statistics for finalized completed orders)
     await placeFirebaseOrder(storeProfile, newOrder, menu);
 
-    setLastOrder(newOrder);
+    if (status === 'completed') {
+      setLastOrder(newOrder);
+    }
   };
 
   const handleUpdateOrders = async (newOrders: Order[]) => {
@@ -278,6 +308,36 @@ const App: React.FC = () => {
         'system'
       );
     }
+
+    // Sync other status changes (e.g., pending -> cooking -> ready) to Firebase
+    for (const newO of newOrders) {
+      const oldO = orders.find(o => o.id === newO.id);
+      if (oldO && oldO.status !== newO.status && newO.status !== 'refunded') {
+        try {
+          await updateServerOrderStatus(storeProfile, newO.id, newO.status);
+          
+          // Trigger notifications on specific stage achievements
+          const tableLabel = tables.find(t => t.id === newO.tableId)?.label || `#${newO.tableId}`;
+          if (newO.status === 'ready') {
+            addNotification(
+              `Order Ready 🍽️`,
+              `Table ${tableLabel} order is ready to be served!`,
+              'success'
+            );
+            playSuccessSound();
+          } else if (newO.status === 'cooking') {
+            addNotification(
+              `Cooking Started 👨‍🍳`,
+              `Kitchen has started preparing Table ${tableLabel} order.`,
+              'system'
+            );
+          }
+        } catch (err) {
+          console.error("Failed to sync order status:", err);
+        }
+      }
+    }
+
     setOrders(newOrders);
   };
 
@@ -328,6 +388,9 @@ const App: React.FC = () => {
             key={posKey}
             tables={tables} 
             menu={menu} 
+            orders={orders}
+            onUpdateOrders={handleUpdateOrders}
+            onUpdateTables={handleUpdateTables}
             onPlaceOrder={handlePlaceOrder} 
             storeProfile={storeProfile}
           />
@@ -350,6 +413,15 @@ const App: React.FC = () => {
             onUpdateMenu={handleUpdateMenu}
             tables={tables}
             onUpdateTables={handleUpdateTables}
+          />
+        );
+      case AppMode.KITCHEN:
+        return (
+          <KitchenView 
+            orders={orders}
+            tables={tables}
+            storeProfile={storeProfile}
+            onUpdateOrders={handleUpdateOrders}
           />
         );
       default:
@@ -388,11 +460,11 @@ const App: React.FC = () => {
     try {
       const date = new Date(dateObj);
       const min = Math.floor((new Date().getTime() - date.getTime()) / 60000);
-      if (min < 1) return '방금 전';
+      if (min < 1) return 'Just now';
       if (min < 60) return `${min}m ago`;
       return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
     } catch {
-      return '방금 전';
+      return 'Just now';
     }
   };
 
@@ -431,6 +503,19 @@ const App: React.FC = () => {
           >
             <LayoutGrid size={20} className="md:w-6 md:h-6" />
             <span className="text-[10px] font-bold">Admin</span>
+          </button>
+
+          <button 
+            onClick={() => { setMode(AppMode.KITCHEN); setShowNotifCenter(false); }}
+            className={`flex flex-col items-center gap-1 p-2 md:p-3 rounded-xl transition-all relative ${mode === AppMode.KITCHEN && !showNotifCenter ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-900/50' : 'text-gray-500 hover:text-gray-300'}`}
+          >
+            {orders.filter(o => o.status === 'pending' || o.status === 'cooking').length > 0 && (
+              <span className="absolute top-1 right-1 md:top-2 md:right-2 w-4 h-4 bg-amber-500 text-slate-950 text-[9px] font-black rounded-full flex items-center justify-center animate-pulse">
+                {orders.filter(o => o.status === 'pending' || o.status === 'cooking').length}
+              </span>
+            )}
+            <ChefHat size={20} className="md:w-6 md:h-6" />
+            <span className="text-[10px] font-bold">Kitchen</span>
           </button>
 
           <button 

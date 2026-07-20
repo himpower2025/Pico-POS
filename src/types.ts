@@ -20,7 +20,7 @@ export interface Order {
   items: OrderItem[];
   total: number;
   timestamp: Date;
-  status: 'completed' | 'refunded'; // Added refunded status
+  status: 'pending' | 'cooking' | 'ready' | 'completed' | 'refunded'; // Extended kitchen statuses
 }
 
 export interface Table {
@@ -66,5 +66,6 @@ export interface SalesData {
 export enum AppMode {
   POS = 'POS',
   DASHBOARD = 'DASHBOARD',
-  SETTINGS = 'SETTINGS'
+  SETTINGS = 'SETTINGS',
+  KITCHEN = 'KITCHEN'
 }
