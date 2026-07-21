@@ -1,0 +1,174 @@
+{
+  "entities": {
+    "StoreProfile": {
+      "title": "StoreProfile",
+      "description": "Store profile definition including billing, subscription state, location, and metadata.",
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Name of the coffee shop or store"
+        },
+        "location": {
+          "type": "string",
+          "description": "Physical address of the store"
+        },
+        "currency": {
+          "type": "string",
+          "description": "Currency code (e.g., NPR, USD)"
+        },
+        "taxRate": {
+          "type": "number",
+          "description": "Applicable sales tax percentage"
+        },
+        "panNumber": {
+          "type": "string",
+          "description": "Tax Registration Number or PAN"
+        },
+        "settlementAccount": {
+          "type": "string",
+          "description": "Connected payout wallet or account details"
+        },
+        "logoIcon": {
+          "type": "string",
+          "description": "Icon type identifier for store profile"
+        },
+        "themeColor": {
+          "type": "string",
+          "description": "Vibrant custom hexadecimal theme color code"
+        },
+        "subscriptionStatus": {
+          "type": "string",
+          "enum": ["none", "monthly", "annual", "owned"],
+          "description": "Current status of rent-to-own subscription"
+        },
+        "subscriptionMonthsPaid": {
+          "type": "number",
+          "description": "Count of consecutive paid subscription months"
+        },
+        "subscriptionStartDate": {
+          "type": "string",
+          "description": "Date when active subscription was initialized"
+        },
+        "subscriptionNextBillingDate": {
+          "type": "string",
+          "description": "Scheduled next automatic payment date"
+        },
+        "floorCount": {
+          "type": "number",
+          "description": "Total number of floors designed inside layout"
+        }
+      },
+      "required": ["name", "location", "currency"]
+    },
+    "Table": {
+      "title": "Table",
+      "description": "A dynamic physical table layout inside the store.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "number",
+          "description": "Numerical unique table identifier"
+        },
+        "label": {
+          "type": "string",
+          "description": "Visual name label of the table (e.g., T-1)"
+        },
+        "x": {
+          "type": "number",
+          "description": "Horizontal percentage coordinate on the layout"
+        },
+        "y": {
+          "type": "number",
+          "description": "Vertical percentage coordinate on the layout"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["empty", "occupied"],
+          "description": "Live occupancy state of the table"
+        },
+        "currentOrderId": {
+          "type": "string",
+          "description": "Reference ID to the current active order"
+        }
+      },
+      "required": ["id", "label", "x", "y", "status"]
+    },
+    "Order": {
+      "title": "Order",
+      "description": "Detailed order transactional record including items, status, total, and timestamp.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Cryptographically secure order identifier"
+        },
+        "tableId": {
+          "type": "number",
+          "description": "Table identifier associated with the order"
+        },
+        "items": {
+          "type": "array",
+          "description": "Detailed list of ordered items, prices, and quantities"
+        },
+        "total": {
+          "type": "number",
+          "description": "Gross billing total including taxes"
+        },
+        "timestamp": {
+          "type": "string",
+          "format": "date-time",
+          "description": "ISO timestamp indicating when order was placed"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["pending", "cooking", "ready", "completed", "refunded"],
+          "description": "Live processing state of the order"
+        }
+      },
+      "required": ["id", "tableId", "items", "total", "timestamp", "status"]
+    },
+    "DailySummary": {
+      "title": "DailySummary",
+      "description": "Aggregated sales summary for a specific calendar date (YYYY-MM-DD).",
+      "type": "object",
+      "properties": {
+        "date": {
+          "type": "string",
+          "description": "Calendar day representation (YYYY-MM-DD)"
+        },
+        "revenue": {
+          "type": "number",
+          "description": "Total sales volume registered during the day"
+        },
+        "profit": {
+          "type": "number",
+          "description": "Net business profits calculated after ingredient cost deductions"
+        },
+        "orderCount": {
+          "type": "number",
+          "description": "Total count of paid transactions finalized during the day"
+        }
+      },
+      "required": ["date", "revenue", "profit", "orderCount"]
+    }
+  },
+  "firestore": {
+    "stores/{storeId}": {
+      "schema": "StoreProfile",
+      "description": "The root document representing a specific store configuration and metadata."
+    },
+    "stores/{storeId}/tables/{tableId}": {
+      "schema": "Table",
+      "description": "Dynamic physical table mapping subcollection for a store."
+    },
+    "stores/{storeId}/orders/{orderId}": {
+      "schema": "Order",
+      "description": "Receipts and active kitchen ticket collection."
+    },
+    "stores/{storeId}/daily_summaries/{dateStr}": {
+      "schema": "DailySummary",
+      "description": "Daily aggregated sales metrics for real-time reporting."
+    }
+  }
+}

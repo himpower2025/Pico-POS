@@ -1,0 +1,55 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 1. Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Hardened Global Helpers
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // Store profiles collection
+    match /stores/{storeId} {
+      allow read, write: if isValidId(storeId);
+
+      // Layout configurations (tables mapping, store profile detail)
+      match /layout/{docId} {
+        allow read, write: if isValidId(storeId) && isValidId(docId);
+      }
+
+      // Sync and cache metadata (e.g., menu_version)
+      match /metadata/{docId} {
+        allow read, write: if isValidId(storeId) && isValidId(docId);
+      }
+
+      // Product menu catalog
+      match /menu/{menuItemId} {
+        allow read: if isValidId(storeId);
+        allow write: if isValidId(storeId) && isValidId(menuItemId);
+      }
+
+      // Active kitchen tickets and completed/refunded order records
+      match /orders/{orderId} {
+        allow read: if isValidId(storeId);
+        allow write: if isValidId(storeId) && isValidId(orderId);
+      }
+
+      // Daily aggregated sales logs (Atomically computed totals)
+      match /daily_summaries/{dateStr} {
+        allow read: if isValidId(storeId);
+        allow write: if isValidId(storeId) && isValidId(dateStr);
+      }
+    }
+  }
+}
