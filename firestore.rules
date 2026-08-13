@@ -11,6 +11,14 @@ service cloud.firestore {
       return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
     }
 
+    // The store's document ID is always the Firebase Auth UID of its owner
+    // (see getStoreId() in firebaseService.ts). This lets us check ownership
+    // with a plain UID comparison instead of an extra get() lookup, which
+    // would otherwise cost a billed read on every single rule evaluation.
+    function isOwner(storeId) {
+      return request.auth != null && request.auth.uid == storeId;
+    }
+
     function incoming() {
       return request.resource.data;
     }
@@ -21,34 +29,34 @@ service cloud.firestore {
 
     // Store profiles collection
     match /stores/{storeId} {
-      allow read, write: if isValidId(storeId);
+      allow read, write: if isValidId(storeId) && isOwner(storeId);
 
       // Layout configurations (tables mapping, store profile detail)
       match /layout/{docId} {
-        allow read, write: if isValidId(storeId) && isValidId(docId);
+        allow read, write: if isValidId(storeId) && isValidId(docId) && isOwner(storeId);
       }
 
       // Sync and cache metadata (e.g., menu_version)
       match /metadata/{docId} {
-        allow read, write: if isValidId(storeId) && isValidId(docId);
+        allow read, write: if isValidId(storeId) && isValidId(docId) && isOwner(storeId);
       }
 
       // Product menu catalog
       match /menu/{menuItemId} {
-        allow read: if isValidId(storeId);
-        allow write: if isValidId(storeId) && isValidId(menuItemId);
+        allow read: if isValidId(storeId) && isOwner(storeId);
+        allow write: if isValidId(storeId) && isValidId(menuItemId) && isOwner(storeId);
       }
 
       // Active kitchen tickets and completed/refunded order records
       match /orders/{orderId} {
-        allow read: if isValidId(storeId);
-        allow write: if isValidId(storeId) && isValidId(orderId);
+        allow read: if isValidId(storeId) && isOwner(storeId);
+        allow write: if isValidId(storeId) && isValidId(orderId) && isOwner(storeId);
       }
 
       // Daily aggregated sales logs (Atomically computed totals)
       match /daily_summaries/{dateStr} {
-        allow read: if isValidId(storeId);
-        allow write: if isValidId(storeId) && isValidId(dateStr);
+        allow read: if isValidId(storeId) && isOwner(storeId);
+        allow write: if isValidId(storeId) && isValidId(dateStr) && isOwner(storeId);
       }
     }
   }

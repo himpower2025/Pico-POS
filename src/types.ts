@@ -55,6 +55,7 @@ export interface StoreProfile {
   subscriptionStartDate?: string;
   subscriptionNextBillingDate?: string;
   floorCount?: 1 | 2 | 3; // Number of floors in the store layout
+  ownerId: string; // Firebase Auth UID of the signed-in owner — the store's data partition key
 }
 
 export interface SalesData {

@@ -18,12 +18,30 @@ import {
   deleteServerMenuItem, 
   placeFirebaseOrder, 
   refundFirebaseOrder, 
-  getDetailedOrders, 
+  getRecentOrders,
+  getSalesSummaries,
+  subscribeToTodaysOrders,
+  subscribeToTodaySummary,
+  subscribeToStoreProfile,
+  subscribeToAuthChanges,
+  signOutUser,
+  loadStoreProfileFromFirebase,
   syncTablesWithFirebase, 
   saveTablesToFirebase, 
   saveStoreProfileToFirebase,
   updateServerOrderStatus
 } from './services/firebaseService';
+import { initializePurchases } from './services/purchasesService';
+import type { QueryDocumentSnapshot } from 'firebase/firestore';
+
+// Merge a batch of incoming orders into the existing list, upserting by id.
+// Never drops an order just because it's absent from `incoming` — the
+// caller controls what's being merged in (e.g. today's live snapshot).
+const mergeOrders = (prev: Order[], incoming: Order[]): Order[] => {
+  const byId = new Map(prev.map(o => [o.id, o]));
+  incoming.forEach(o => byId.set(o.id, o));
+  return Array.from(byId.values()).sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
+};
 
 // Mock Initial Data (Global Currency Prices & Images)
 const INITIAL_MENU: MenuItem[] = [
@@ -129,8 +147,13 @@ const INITIAL_TABLES: Table[] = [
 
 const App: React.FC = () => {
   const [storeProfile, setStoreProfile] = useState<StoreProfile | null>(null);
+  const [isCheckingSession, setIsCheckingSession] = useState(true);
   const [mode, setMode] = useState<AppMode>(AppMode.POS);
   const [orders, setOrders] = useState<Order[]>([]);
+  const [summaries, setSummaries] = useState<any[]>([]);
+  const [lastOrderDoc, setLastOrderDoc] = useState<QueryDocumentSnapshot | null>(null);
+  const [hasMoreOrders, setHasMoreOrders] = useState(true);
+  const [isLoadingMoreOrders, setIsLoadingMoreOrders] = useState(false);
   const [tables, setTables] = useState<Table[]>(INITIAL_TABLES);
   const [menu, setMenu] = useState<MenuItem[]>(INITIAL_MENU);
   const [lastOrder, setLastOrder] = useState<Order | null>(null);
@@ -162,6 +185,35 @@ const App: React.FC = () => {
     }, 4500);
   };
 
+  // Restore an existing Firebase Auth session on app load (e.g. after a
+  // refresh) so "Remember me" actually keeps the user logged in instead of
+  // bouncing back to LoginView every time. Only the FIRST auth-state
+  // emission is treated as a restore — later emissions happen because
+  // LoginView/handleLogout already updated storeProfile directly, so
+  // acting on them here too would just be a redundant, stale-closure-prone
+  // reload.
+  useEffect(() => {
+    let isFirstCheck = true;
+    const unsubscribe = subscribeToAuthChanges(async (user) => {
+      if (!isFirstCheck) return;
+      isFirstCheck = false;
+
+      if (user) {
+        try {
+          const profile = await loadStoreProfileFromFirebase(user.uid);
+          if (profile) {
+            setStoreProfile(profile);
+          }
+        } catch (err) {
+          console.error('[Firebase Auth] Failed to restore session:', err);
+        }
+      }
+      setIsCheckingSession(false);
+    });
+
+    return () => unsubscribe();
+  }, []);
+
   // Load cloud data upon login
   useEffect(() => {
     if (!storeProfile) {
@@ -176,20 +228,24 @@ const App: React.FC = () => {
       setIsSyncing(true);
       try {
         // Run all cloud sync operations in parallel to optimize initial load speed
-        const [syncedMenu, syncedTables, loadedOrders] = await Promise.all([
+        const [syncedMenu, syncedTables, recentOrdersResult, loadedSummaries] = await Promise.all([
           syncMenuWithCache(storeProfile, INITIAL_MENU),
           syncTablesWithFirebase(storeProfile, INITIAL_TABLES),
-          getDetailedOrders(storeProfile)
+          getRecentOrders(storeProfile, { days: 7 }),
+          getSalesSummaries(storeProfile)
         ]);
 
         setMenu(syncedMenu);
         setTables(syncedTables);
-        setOrders(loadedOrders);
+        setOrders(recentOrdersResult.orders);
+        setLastOrderDoc(recentOrdersResult.lastDoc);
+        setHasMoreOrders(recentOrdersResult.orders.length > 0);
+        setSummaries(loadedSummaries);
 
         // Trigger welcome success notification upon cloud sync
         addNotification(
           'POS System Ready',
-          `Connected to ${storeProfile.name || 'Pico Cloud'}. Loaded ${syncedMenu.length} menu items & ${loadedOrders.length} receipts securely.`,
+          `Connected to ${storeProfile.name || 'Pico Cloud'}. Loaded ${syncedMenu.length} menu items & ${recentOrdersResult.orders.length} recent receipts securely.`,
           'success'
         );
       } catch (err) {
@@ -201,6 +257,108 @@ const App: React.FC = () => {
 
     loadCloudData();
   }, [storeProfile]);
+
+  // REAL-TIME: keep today's orders in sync across every terminal (counter,
+  // kitchen display, dashboard) without re-reading the store's full order
+  // history. Runs continuously while logged in, independent of the one-time
+  // load above.
+  useEffect(() => {
+    if (!storeProfile) return;
+
+    const unsubscribe = subscribeToTodaysOrders(
+      storeProfile,
+      (todaysOrders) => {
+        setOrders(prev => mergeOrders(prev, todaysOrders));
+      },
+      (err) => {
+        console.error('[Firebase Realtime] Today\'s orders subscription failed:', err);
+      }
+    );
+
+    return () => unsubscribe();
+  }, [storeProfile]);
+
+  // REAL-TIME: keep today's revenue/profit/order-count KPI live across
+  // terminals by listening to a single summary document, instead of
+  // re-reading order documents to recompute totals.
+  useEffect(() => {
+    if (!storeProfile) return;
+
+    const unsubscribe = subscribeToTodaySummary(
+      storeProfile,
+      (todaySummary) => {
+        setSummaries(prev => {
+          const others = prev.filter(s => s.id !== todaySummary.id);
+          return [...others, todaySummary];
+        });
+      },
+      (err) => {
+        console.error('[Firebase Realtime] Today\'s summary subscription failed:', err);
+      }
+    );
+
+    return () => unsubscribe();
+  }, [storeProfile]);
+
+  // REAL-TIME: keep the store profile in sync — most importantly,
+  // subscriptionStatus/subscriptionMonthsPaid once RevenueCat webhooks
+  // start writing them server-side after a native purchase.
+  useEffect(() => {
+    if (!storeProfile) return;
+
+    const unsubscribe = subscribeToStoreProfile(
+      storeProfile,
+      (updatedProfile) => {
+        setStoreProfile(updatedProfile);
+      },
+      (err) => {
+        console.error('[Firebase Realtime] Store profile subscription failed:', err);
+      }
+    );
+
+    return () => unsubscribe();
+    // Only re-subscribe when the store identity itself changes, not on every
+    // field update to storeProfile (which would tear down and recreate the
+    // listener on every single change, including the ones it just delivered).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [storeProfile?.ownerId]);
+
+  // Initialize RevenueCat for native in-app purchases. No-ops automatically
+  // on web/PWA — see isNativePurchasesAvailable() in purchasesService.ts.
+  useEffect(() => {
+    if (!storeProfile?.ownerId) return;
+    initializePurchases(storeProfile.ownerId).catch((err) => {
+      console.error('[Purchases] Failed to initialize RevenueCat:', err);
+    });
+  }, [storeProfile?.ownerId]);
+
+  // Explicit, user-initiated pagination: only costs reads when the store
+  // owner actually asks to see further back than the last 7 days.
+  const handleLoadOlderOrders = async () => {
+    if (!storeProfile || !lastOrderDoc || isLoadingMoreOrders) return;
+
+    setIsLoadingMoreOrders(true);
+    try {
+      const result = await getRecentOrders(storeProfile, { startAfterDoc: lastOrderDoc });
+      setOrders(prev => mergeOrders(prev, result.orders));
+      setLastOrderDoc(result.lastDoc);
+      setHasMoreOrders(result.orders.length > 0);
+    } catch (err) {
+      console.error('[Firebase] Failed to load older orders:', err);
+    } finally {
+      setIsLoadingMoreOrders(false);
+    }
+  };
+
+  // While restoring a possible existing session, avoid flashing the login
+  // screen for users who are actually still signed in.
+  if (isCheckingSession) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-100">
+        <Loader2 className="animate-spin text-indigo-600" size={32} />
+      </div>
+    );
+  }
 
   // If not logged in, show Login View
   if (!storeProfile) {
@@ -386,8 +544,12 @@ const App: React.FC = () => {
   };
 
   const handleLogout = () => {
+    signOutUser().catch(err => console.error('[Firebase Auth] Sign out failed:', err));
     setStoreProfile(null);
-    setOrders([]); 
+    setOrders([]);
+    setSummaries([]);
+    setLastOrderDoc(null);
+    setHasMoreOrders(true);
   };
 
   const renderContent = () => {
@@ -409,6 +571,10 @@ const App: React.FC = () => {
         return (
           <DashboardView 
             orders={orders}
+            summaries={summaries}
+            onLoadOlderOrders={handleLoadOlderOrders}
+            hasMoreOrders={hasMoreOrders}
+            isLoadingMoreOrders={isLoadingMoreOrders}
             onUpdateOrders={handleUpdateOrders} // Intercept order status updates (refunds)
             menu={menu}
             storeProfile={storeProfile}

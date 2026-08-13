@@ -17,12 +17,25 @@ interface OperationalExpense {
 
 interface DashboardViewProps {
   orders: Order[];
+  summaries: any[];
+  onLoadOlderOrders: () => void;
+  hasMoreOrders: boolean;
+  isLoadingMoreOrders?: boolean;
   onUpdateOrders: (orders: Order[]) => void;
   menu: MenuItem[];
   storeProfile: StoreProfile;
 }
 
-const DashboardView: React.FC<DashboardViewProps> = ({ orders, onUpdateOrders, menu, storeProfile }) => {
+const DashboardView: React.FC<DashboardViewProps> = ({
+  orders,
+  summaries,
+  onLoadOlderOrders,
+  hasMoreOrders,
+  isLoadingMoreOrders,
+  onUpdateOrders,
+  menu,
+  storeProfile
+}) => {
   const [analysis, setAnalysis] = useState<string | null>(null);
   const [forecast, setForecast] = useState<any[]>([]);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -114,21 +127,18 @@ const DashboardView: React.FC<DashboardViewProps> = ({ orders, onUpdateOrders, m
     });
   };
 
-  // Calculate real-time stats including custom operational expenses
+  // Calculate stats from the daily_summaries aggregate documents (a handful
+  // of reads — one per day the store has operated) rather than iterating
+  // every order the client happens to have loaded. This keeps "Total
+  // Revenue" etc. accurate as true all-time totals even though `orders`
+  // itself is now capped to a recent window for the transaction list.
   const stats = useMemo(() => {
-    let revenue = 0;
-    let ingredientCost = 0;
-    // Filter out refunded orders from stats
-    const validOrders = orders.filter(o => o.status === 'completed');
-    
-    validOrders.forEach(order => {
-      revenue += order.total;
-      order.items.forEach(item => {
-        const menuItem = menu.find(m => m.id === item.id);
-        const itemCost = menuItem ? menuItem.cost : 0;
-        ingredientCost += itemCost * item.quantity;
-      });
-    });
+    const revenue = summaries.reduce((sum, s) => sum + (s.revenue || 0), 0);
+    // summary.profit is revenue minus ingredient cost only (no operating
+    // expenses baked in), so ingredient cost can be recovered directly.
+    const summaryProfit = summaries.reduce((sum, s) => sum + (s.profit || 0), 0);
+    const count = summaries.reduce((sum, s) => sum + (s.orderCount || 0), 0);
+    const ingredientCost = revenue - summaryProfit;
 
     const customExpensesSum = expenses.reduce((sum, exp) => sum + exp.amount, 0);
     const totalCost = ingredientCost + customExpensesSum;
@@ -139,10 +149,10 @@ const DashboardView: React.FC<DashboardViewProps> = ({ orders, onUpdateOrders, m
       customExpensesSum,
       cost: totalCost,
       profit: revenue - totalCost,
-      count: validOrders.length,
-      avgValue: validOrders.length > 0 ? Math.floor(revenue / validOrders.length) : 0
+      count,
+      avgValue: count > 0 ? Math.floor(revenue / count) : 0
     };
-  }, [orders, menu, expenses]);
+  }, [summaries, expenses]);
 
   // Mock data generation
   const chartData = useMemo(() => {
@@ -464,7 +474,7 @@ const DashboardView: React.FC<DashboardViewProps> = ({ orders, onUpdateOrders, m
             <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden animate-in slide-in-from-bottom-4 duration-500">
                  <div className="p-6 border-b border-gray-100 flex justify-between items-center">
                     <h3 className="text-lg font-bold text-gray-800">Transaction History</h3>
-                    <div className="text-sm text-gray-500">Total: {orders.length} records</div>
+                    <div className="text-sm text-gray-500">{orders.length} loaded</div>
                  </div>
                  <div className="overflow-x-auto">
                     <table className="w-full text-left">
@@ -526,6 +536,17 @@ const DashboardView: React.FC<DashboardViewProps> = ({ orders, onUpdateOrders, m
                         </tbody>
                     </table>
                  </div>
+                 {hasMoreOrders && (
+                   <div className="p-4 border-t border-gray-100 flex justify-center">
+                     <button
+                       onClick={onLoadOlderOrders}
+                       disabled={isLoadingMoreOrders}
+                       className="px-5 py-2.5 rounded-xl text-sm font-bold text-gray-600 bg-gray-50 hover:bg-gray-100 border border-gray-200 transition disabled:opacity-60"
+                     >
+                       {isLoadingMoreOrders ? 'Loading...' : 'Load older transactions'}
+                     </button>
+                   </div>
+                 )}
             </div>
         )}
 

@@ -1,11 +1,19 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { StoreProfile } from '../types';
 import { 
   CreditCard, Zap, Award, Sparkles, ShieldCheck, 
   Lock, RefreshCw, HelpCircle, ChevronDown, MessageSquare, 
-  Send, Mail, X, CheckCircle 
+  Send, Mail, X, CheckCircle, AlertCircle 
 } from 'lucide-react';
 import { ConfirmModal } from './ConfirmModal';
+import { Capacitor } from '@capacitor/core';
+import {
+  isNativePurchasesAvailable,
+  getCurrentOffering,
+  purchaseSubscription,
+  restoreSubscription
+} from '../services/purchasesService';
+import type { PurchasesOffering, PurchasesPackage } from '@revenuecat/purchases-capacitor';
 
 interface SubscriptionViewProps {
   storeProfile: StoreProfile;
@@ -17,14 +25,26 @@ export const SubscriptionView: React.FC<SubscriptionViewProps> = ({
   onUpdateProfile 
 }) => {
   const [selectedPlan, setSelectedPlan] = useState<'monthly' | 'annual'>('annual');
-  const [cardNumber, setCardNumber] = useState('');
-  const [cardName, setCardName] = useState('');
-  const [cardExpiry, setCardExpiry] = useState('');
-  const [cardCvv, setCardCvv] = useState('');
-  const [zipCode, setZipCode] = useState('');
-  
   const [isProcessing, setIsProcessing] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
+
+  // Native (App Store / Google Play) purchase state — unused, and harmless,
+  // when running as a plain web/PWA build.
+  const isNative = isNativePurchasesAvailable();
+  const [offering, setOffering] = useState<PurchasesOffering | null>(null);
+  const [isLoadingOffering, setIsLoadingOffering] = useState(isNative);
+  const [purchaseError, setPurchaseError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!isNative) return;
+    getCurrentOffering()
+      .then(setOffering)
+      .catch((err) => {
+        console.error('[Purchases] Failed to load offerings:', err);
+        setPurchaseError('Could not load subscription plans. Please try again later.');
+      })
+      .finally(() => setIsLoadingOffering(false));
+  }, [isNative]);
 
   // FAQ accordion state
   const [openFaqIndex, setOpenFaqIndex] = useState<number | null>(null);
@@ -64,84 +84,54 @@ export const SubscriptionView: React.FC<SubscriptionViewProps> = ({
   const currentStatus = storeProfile.subscriptionStatus || 'none';
   const monthsPaid = storeProfile.subscriptionMonthsPaid !== undefined ? storeProfile.subscriptionMonthsPaid : 0;
 
-  // Format Card Number (adds spaces)
-  const handleCardNumberChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    let value = e.target.value.replace(/\s+/g, '').replace(/[^0-9]/gi, '');
-    let formattedValue = '';
-    for (let i = 0; i < value.length; i++) {
-      if (i > 0 && i % 4 === 0) {
-        formattedValue += ' ';
-      }
-      formattedValue += value[i];
-    }
-    setCardNumber(formattedValue.slice(0, 19));
-  };
-
   // Format Expiry Date (MM/YY)
-  const handleExpiryChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    let value = e.target.value.replace(/\D/g, '');
-    if (value.length > 2) {
-      value = value.slice(0, 2) + '/' + value.slice(2, 4);
-    }
-    setCardExpiry(value.slice(0, 5));
+  // Real online checkout isn't wired up yet. Rather than pretend a payment
+  // succeeded (the previous version of this screen always showed "success"
+  // after a fake delay, regardless of what was entered), this routes the
+  // interested store owner to the contact form so we can activate their
+  // plan manually until Paddle checkout is connected.
+  const handleRequestSubscription = () => {
+    setFeedbackCategory('Billing');
+    setFeedbackSubject(`${selectedPlan === 'annual' ? 'Annual' : 'Monthly'} plan sign-up request`);
+    setIsFeedbackModalOpen(true);
   };
 
-  // Format CVV (max 4 digits)
-  const handleCvvChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    let value = e.target.value.replace(/\D/g, '');
-    setCardCvv(value.slice(0, 4));
-  };
-
-  // Detect Card Network
-  const getCardType = (num: string) => {
-    const cleanNum = num.replace(/\s+/g, '');
-    if (cleanNum.startsWith('4')) return 'Visa';
-    if (/^5[1-5]/.test(cleanNum)) return 'Mastercard';
-    if (/^3[47]/.test(cleanNum)) return 'Amex';
-    if (/^(?:6011|65|64[4-9]|622)/.test(cleanNum)) return 'Discover';
-    return 'Unknown';
-  };
-
-  const cardType = getCardType(cardNumber);
-
-  // Handle Mock Payment Submission
-  const handlePaymentSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!cardNumber || !cardName || !cardExpiry || !cardCvv) {
-      alert('Please fill out all card details.');
-      return;
-    }
-
+  // Native purchase flow. Deliberately does NOT set subscriptionStatus
+  // locally on success — that would be the same "client declares itself
+  // paid" pattern that made the old mock checkout unsafe. The real status
+  // update comes from the RevenueCat webhook writing to Firestore
+  // server-side, which the app is already listening to live
+  // (subscribeToStoreProfile in App.tsx). This just shows a brief
+  // "activating" state until that arrives.
+  const handleNativePurchase = async (pkg: PurchasesPackage) => {
+    setPurchaseError(null);
     setIsProcessing(true);
-
-    // Simulate Payment Gateway call to Stripe
-    setTimeout(() => {
-      setIsProcessing(false);
+    try {
+      await purchaseSubscription(pkg);
       setIsSuccess(true);
-
-      // Determine next billing date and months paid update
-      const now = new Date();
-      const nextBilling = new Date();
-      let updatedMonths = monthsPaid;
-
-      if (selectedPlan === 'annual') {
-        nextBilling.setFullYear(now.getFullYear() + 1);
-        updatedMonths = 12; // Annual prepay grants perpetual ownership at the end of year cycle or right away
-      } else {
-        nextBilling.setMonth(now.getMonth() + 1);
-        updatedMonths = Math.min(12, monthsPaid + 1);
+    } catch (err: any) {
+      // RevenueCat throws a specific error when the user just backs out of
+      // the purchase sheet — that's not a failure worth showing as one.
+      if (!err?.userCancelled) {
+        console.error('[Purchases] Purchase failed:', err);
+        setPurchaseError('Purchase could not be completed. Please try again.');
       }
+    } finally {
+      setIsProcessing(false);
+    }
+  };
 
-      const updatedProfile: StoreProfile = {
-        ...storeProfile,
-        subscriptionStatus: updatedMonths >= 12 ? 'owned' : selectedPlan,
-        subscriptionMonthsPaid: updatedMonths,
-        subscriptionStartDate: now.toLocaleDateString(),
-        subscriptionNextBillingDate: updatedMonths >= 12 ? undefined : nextBilling.toLocaleDateString()
-      };
-
-      onUpdateProfile(updatedProfile);
-    }, 2500);
+  const handleRestorePurchases = async () => {
+    setPurchaseError(null);
+    setIsProcessing(true);
+    try {
+      await restoreSubscription();
+    } catch (err) {
+      console.error('[Purchases] Restore failed:', err);
+      setPurchaseError('Could not restore purchases. Please try again.');
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   // Reset demo subscription state to try again
@@ -161,11 +151,6 @@ export const SubscriptionView: React.FC<SubscriptionViewProps> = ({
           subscriptionStartDate: undefined,
           subscriptionNextBillingDate: undefined
         });
-        setCardNumber('');
-        setCardName('');
-        setCardExpiry('');
-        setCardCvv('');
-        setZipCode('');
         setIsSuccess(false);
         setConfirmModal(prev => ({ ...prev, isOpen: false }));
       }
@@ -371,150 +356,92 @@ export const SubscriptionView: React.FC<SubscriptionViewProps> = ({
             </div>
           </div>
 
-          {/* Right Column: Google Play & App Store In-App Purchase Simulator */}
+          {/* Right Column: Payment */}
           <div className="lg:col-span-7 space-y-6">
-            <div className="flex justify-between items-center">
-              <h3 className="text-lg font-bold text-gray-800">App Store In-App Purchase</h3>
-              <div className="text-xs bg-slate-100 text-slate-600 px-2.5 py-1 rounded-lg font-bold">
-                Hybrid App SDK Integrated
-              </div>
-            </div>
-            
-            <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm space-y-6">
-              {/* Informational Banner about Card-free IAP */}
-              <div className="bg-blue-50/50 border border-blue-100 p-4 rounded-xl space-y-2">
-                <h4 className="text-xs font-black text-blue-900 uppercase tracking-wider flex items-center gap-1.5">
-                  <Sparkles size={14} className="text-blue-500" /> Nepal Local Carrier & Wallet billing
-                </h4>
-                <p className="text-[11px] text-blue-800 leading-relaxed">
-                  <strong>No international credit card required!</strong> By choosing Google Play or Apple App Store In-App Purchase, your Nepalese clients can easily pay for subscriptions using <strong>local wallets (eSewa, Khalti)</strong>, <strong>carrier billing (Ncell / NTC)</strong>, or <strong>prepaid Gift Cards</strong> purchased with cash.
-                </p>
-              </div>
+            <h3 className="text-lg font-bold text-gray-800">Payment</h3>
 
-              {/* Platform Selector Tabs */}
-              <div>
-                <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2.5">
-                  Choose Native Platform Store
-                </label>
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setCardName('Google Play');
-                      setCardNumber('google');
-                    }}
-                    className={`p-3 rounded-xl border-2 font-bold text-xs flex items-center justify-center gap-2 transition ${
-                      cardNumber === 'google' || cardNumber === ''
-                        ? 'border-indigo-600 bg-indigo-50/20 text-indigo-950'
-                        : 'border-gray-100 bg-gray-50/50 text-gray-500 hover:border-gray-200'
-                    }`}
-                  >
-                    <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="currentColor">
-                      <path d="M3.609 1.814L13.783 12 3.609 22.186a2.204 2.204 0 01-.601-1.503V3.317c0-.574.22-1.096.601-1.503zM14.973 13.19l3.056 3.056L5.353 22.95l9.62-9.76zM14.973 10.81l9.62-9.76-12.676 6.704 3.056 3.056zM14.49 12.707l2.846-2.846 4.103 2.139a1.69 1.69 0 010 2.915l-4.103 2.138-2.846-2.846z" fill="currentColor" />
-                    </svg>
-                    Google Play (Android Tablet)
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setCardName('Apple App Store');
-                      setCardNumber('apple');
-                    }}
-                    className={`p-3 rounded-xl border-2 font-bold text-xs flex items-center justify-center gap-2 transition ${
-                      cardNumber === 'apple'
-                        ? 'border-indigo-600 bg-indigo-50/20 text-indigo-950'
-                        : 'border-gray-100 bg-gray-50/50 text-gray-500 hover:border-gray-200'
-                    }`}
-                  >
-                    <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="currentColor">
-                      <path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.81-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M15.97 4.17c.66-.81 1.11-1.93.99-3.06-1 .04-2.21.67-2.93 1.49-.62.69-1.16 1.84-1.01 2.96 1.12.09 2.27-.57 2.95-1.39z" />
-                    </svg>
-                    Apple App Store (iPad)
-                  </button>
-                </div>
+            {purchaseError && (
+              <div className="flex items-start gap-2 bg-red-50 border border-red-100 text-red-700 text-sm rounded-xl p-3">
+                <AlertCircle size={18} className="shrink-0 mt-0.5" />
+                <span>{purchaseError}</span>
               </div>
+            )}
 
-              {/* Native simulated billing selector */}
-              <div className="space-y-3">
-                <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest">
-                  Simulated Billing Method (Nepal Compliant)
-                </label>
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-100">
-                    <div className="flex items-center gap-3">
-                      <div className="p-1.5 bg-emerald-100 text-emerald-700 rounded-lg text-[10px] font-black uppercase">
-                        Wallet
-                      </div>
-                      <div>
-                        <p className="text-xs font-bold text-slate-800">Nepal Mobile Wallets (eSewa / Khalti)</p>
-                        <p className="text-[10px] text-slate-500">Deducts instantly via regional App Store linkage</p>
-                      </div>
-                    </div>
-                    <span className="text-[10px] bg-emerald-50 text-emerald-600 px-2 py-0.5 rounded font-bold">Supported</span>
+            {isNative ? (
+              <div className="bg-white p-8 rounded-2xl border border-gray-100 shadow-sm text-center space-y-4">
+                {isLoadingOffering ? (
+                  <div className="py-6 flex flex-col items-center gap-3 text-gray-400">
+                    <RefreshCw size={24} className="animate-spin" />
+                    <span className="text-sm">Loading plans...</span>
                   </div>
-
-                  <div className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-100">
-                    <div className="flex items-center gap-3">
-                      <div className="p-1.5 bg-blue-100 text-blue-700 rounded-lg text-[10px] font-black uppercase">
-                        Carrier
-                      </div>
-                      <div>
-                        <p className="text-xs font-bold text-slate-800">Carrier Airtime Billing (Ncell / NTC)</p>
-                        <p className="text-[10px] text-slate-500">Charge is added to mobile balance or postpaid bill</p>
-                      </div>
-                    </div>
-                    <span className="text-[10px] bg-emerald-50 text-emerald-600 px-2 py-0.5 rounded font-bold">Supported</span>
-                  </div>
-
-                  <div className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-100">
-                    <div className="flex items-center gap-3">
-                      <div className="p-1.5 bg-purple-100 text-purple-700 rounded-lg text-[10px] font-black uppercase">
-                        GiftCard
-                      </div>
-                      <div>
-                        <p className="text-xs font-bold text-slate-800">Store Gift Cards / Redemptions</p>
-                        <p className="text-[10px] text-slate-500">Enter code bought at physical retailers</p>
-                      </div>
-                    </div>
-                    <span className="text-[10px] bg-emerald-50 text-emerald-600 px-2 py-0.5 rounded font-bold">Supported</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Secure terms footer */}
-              <div className="pt-2 border-t border-gray-100 flex items-center justify-between text-xs text-gray-500">
-                <span className="flex items-center gap-1">
-                  <Lock size={12} className="text-emerald-500" />
-                  Native Sandbox Verified
-                </span>
-                <span>{cardNumber === 'apple' ? 'Apple App Store Server v2' : 'Google Play Billing Library v6'}</span>
-              </div>
-
-              {/* Trigger In-App Purchase Button */}
-              <button
-                type="button"
-                onClick={handlePaymentSubmit}
-                disabled={isProcessing}
-                className={`w-full text-white font-bold py-4 rounded-xl flex items-center justify-center gap-2 shadow-lg disabled:opacity-50 transition active:scale-[0.99] ${
-                  cardNumber === 'apple' 
-                    ? 'bg-slate-900 hover:bg-black' 
-                    : 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-100'
-                }`}
-              >
-                {isProcessing ? (
+                ) : offering ? (
                   <>
-                    <RefreshCw size={18} className="animate-spin" />
-                    Connecting to {cardNumber === 'apple' ? 'App Store' : 'Google Play'} Dialog...
+                    <div className="w-14 h-14 bg-indigo-100 text-indigo-600 rounded-full mx-auto flex items-center justify-center">
+                      <ShieldCheck size={24} />
+                    </div>
+                    <div>
+                      <h4 className="font-bold text-gray-900">
+                        {selectedPlan === 'annual' ? 'Annual Prepay' : 'Monthly Plan'}
+                      </h4>
+                      <p className="text-sm text-gray-500 mt-1 max-w-sm mx-auto leading-relaxed">
+                        Handled securely by the {Capacitor.getPlatform() === 'ios' ? 'App Store' : 'Google Play'} — your
+                        card details never pass through Pico POS.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      disabled={isProcessing}
+                      onClick={() => {
+                        const pkg = selectedPlan === 'annual' ? offering.annual : offering.monthly;
+                        if (pkg) handleNativePurchase(pkg);
+                        else setPurchaseError('This plan is not available right now.');
+                      }}
+                      className="w-full px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-sm transition inline-flex items-center justify-center gap-2 disabled:opacity-60"
+                    >
+                      {isProcessing ? (
+                        <RefreshCw size={16} className="animate-spin" />
+                      ) : (
+                        <Zap size={16} className="text-yellow-300" />
+                      )}
+                      Subscribe
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleRestorePurchases}
+                      disabled={isProcessing}
+                      className="text-xs text-gray-400 hover:text-gray-600 underline font-medium transition"
+                    >
+                      Restore previous purchase
+                    </button>
                   </>
                 ) : (
-                  <>
-                    <Zap size={18} className="text-yellow-300" />
-                    Purchase with {cardNumber === 'apple' ? 'Apple App Store' : 'Google Play Store'} - {selectedPlan === 'annual' ? '$219.99' : '$21.99'}
-                  </>
+                  <p className="text-sm text-gray-500">No subscription plans are available right now.</p>
                 )}
-              </button>
-            </div>
+              </div>
+            ) : (
+              <div className="bg-white p-8 rounded-2xl border border-gray-100 shadow-sm text-center space-y-4">
+                <div className="w-14 h-14 bg-amber-100 text-amber-600 rounded-full mx-auto flex items-center justify-center">
+                  <Lock size={24} />
+                </div>
+                <div>
+                  <h4 className="font-bold text-gray-900">Online payment is being set up</h4>
+                  <p className="text-sm text-gray-500 mt-1 max-w-sm mx-auto leading-relaxed">
+                    Secure checkout isn't connected yet, so nothing will be charged here. Contact us and
+                    we'll get your {selectedPlan === 'annual' ? 'Annual' : 'Monthly'} plan activated in the meantime.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleRequestSubscription}
+                  className="px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-sm transition inline-flex items-center gap-2"
+                >
+                  <MessageSquare size={16} />
+                  Contact Us to Subscribe
+                </button>
+              </div>
+            )}
           </div>
+
         </div>
       )}
 

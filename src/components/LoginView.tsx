@@ -1,71 +1,146 @@
 import React, { useState } from 'react';
 import { StoreProfile } from '../types';
-import { CloudSun, Lock, Mail, ArrowRight, Sparkles, BarChart3 } from 'lucide-react';
-import { loadStoreProfileFromFirebase, saveStoreProfileToFirebase } from '../services/firebaseService';
+import { CloudSun, Lock, Mail, ArrowRight, Sparkles, BarChart3, AlertCircle, CheckCircle2 } from 'lucide-react';
+import {
+  registerWithEmail,
+  signInWithEmail,
+  signInWithGoogleAccount,
+  sendPasswordReset,
+  setAuthPersistence,
+  loadStoreProfileFromFirebase,
+  saveStoreProfileToFirebase
+} from '../services/firebaseService';
 
 interface LoginViewProps {
   onLogin: (profile: StoreProfile) => void;
 }
 
+type AuthMode = 'signin' | 'signup';
+
+// Turn a Firebase Auth error code into a short, user-facing message.
+const getAuthErrorMessage = (code?: string): string => {
+  switch (code) {
+    case 'auth/user-not-found':
+      return 'No account found with this email. Try "Create Account" instead.';
+    case 'auth/wrong-password':
+    case 'auth/invalid-credential':
+      return 'Incorrect email or password.';
+    case 'auth/email-already-in-use':
+      return 'An account with this email already exists. Try "Sign In" instead.';
+    case 'auth/weak-password':
+      return 'Password must be at least 6 characters.';
+    case 'auth/invalid-email':
+      return 'Please enter a valid email address.';
+    case 'auth/popup-closed-by-user':
+    case 'auth/cancelled-popup-request':
+      return 'Google sign-in was cancelled.';
+    case 'auth/too-many-requests':
+      return 'Too many attempts. Please wait a moment and try again.';
+    default:
+      return 'Something went wrong. Please try again.';
+  }
+};
+
 const LoginView: React.FC<LoginViewProps> = ({ onLogin }) => {
+  const [mode, setMode] = useState<AuthMode>('signin');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [rememberMe, setRememberMe] = useState(true);
   const [isLoading, setIsLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [infoMessage, setInfoMessage] = useState<string | null>(null);
 
-  const handleLogin = (e: React.FormEvent) => {
-    e.preventDefault();
-    processLogin(email);
-  };
+  // Load the store's profile by Auth UID, or create a default one on first login.
+  const resolveOrCreateProfile = async (uid: string, userEmail: string | null): Promise<StoreProfile> => {
+    let profile = await loadStoreProfileFromFirebase(uid);
 
-  const handleGoogleLogin = () => {
-    // Simulate Google Login flow
-    processLogin('google-user@pico.app');
-  };
-
-  const processLogin = async (userEmail: string) => {
-    setIsLoading(true);
-
-    try {
-      // Load real store profile from Firebase
-      let profile = await loadStoreProfileFromFirebase(userEmail);
-      
-      if (!profile) {
-        // Create new default profile on Firebase for first-time login
-        const isDemo = userEmail.includes('demo');
-        profile = {
-          name: isDemo ? 'Blue Bottle Demo' : 'Pico Cafe',
-          location: isDemo ? 'Gangnam, Seoul' : 'Global Branch',
-          currency: isDemo ? 'KRW' : 'USD',
-          taxRate: isDemo ? 10 : 8,
-          panNumber: isDemo ? '123-456-7890' : '987-654-321',
-          settlementAccount: isDemo ? 'KR-BANK-001' : 'US-BANK-999',
-          logoIcon: isDemo ? 'coffee' : 'cloud',
-          themeColor: isDemo ? 'bg-indigo-900' : 'bg-indigo-600',
-          subscriptionStatus: 'none',
-          subscriptionMonthsPaid: 0
-        };
-        await saveStoreProfileToFirebase(profile);
-      }
-
-      onLogin(profile);
-    } catch (err) {
-      console.error('[Firebase Login] Error loading profile, using default:', err);
-      // Failover to temporary local store profile if network fails
-      onLogin({
-        name: 'Pico Cafe',
-        location: 'Global Branch',
-        currency: 'USD',
-        taxRate: 8,
-        panNumber: '987-654-321',
-        settlementAccount: 'US-BANK-999',
-        logoIcon: 'cloud',
-        themeColor: 'bg-indigo-600',
+    if (!profile) {
+      const isDemo = (userEmail || '').includes('demo');
+      profile = {
+        name: isDemo ? 'Blue Bottle Demo' : 'Pico Cafe',
+        location: isDemo ? 'Gangnam, Seoul' : 'Global Branch',
+        currency: isDemo ? 'KRW' : 'USD',
+        taxRate: isDemo ? 10 : 8,
+        panNumber: isDemo ? '123-456-7890' : '987-654-321',
+        settlementAccount: isDemo ? 'KR-BANK-001' : 'US-BANK-999',
+        logoIcon: isDemo ? 'coffee' : 'cloud',
+        themeColor: isDemo ? 'bg-indigo-900' : 'bg-indigo-600',
         subscriptionStatus: 'none',
-        subscriptionMonthsPaid: 0
-      });
+        subscriptionMonthsPaid: 0,
+        ownerId: uid
+      };
+      await saveStoreProfileToFirebase(profile);
+    }
+
+    return profile;
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setErrorMessage(null);
+    setInfoMessage(null);
+
+    if (mode === 'signup' && password !== confirmPassword) {
+      setErrorMessage('Passwords do not match.');
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      await setAuthPersistence(rememberMe);
+      const credential = mode === 'signup'
+        ? await registerWithEmail(email, password)
+        : await signInWithEmail(email, password);
+
+      const profile = await resolveOrCreateProfile(credential.user.uid, credential.user.email);
+      onLogin(profile);
+    } catch (err: any) {
+      setErrorMessage(getAuthErrorMessage(err?.code));
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handleGoogleLogin = async () => {
+    setErrorMessage(null);
+    setInfoMessage(null);
+    setIsLoading(true);
+
+    try {
+      await setAuthPersistence(rememberMe);
+      const credential = await signInWithGoogleAccount();
+      const profile = await resolveOrCreateProfile(credential.user.uid, credential.user.email);
+      onLogin(profile);
+    } catch (err: any) {
+      setErrorMessage(getAuthErrorMessage(err?.code));
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleForgotPassword = async () => {
+    setErrorMessage(null);
+    setInfoMessage(null);
+
+    if (!email) {
+      setErrorMessage('Enter your email address first, then tap "Forgot password?" again.');
+      return;
+    }
+
+    try {
+      await sendPasswordReset(email);
+      setInfoMessage(`Password reset email sent to ${email}.`);
+    } catch (err: any) {
+      setErrorMessage(getAuthErrorMessage(err?.code));
+    }
+  };
+
+  const switchMode = (nextMode: AuthMode) => {
+    setMode(nextMode);
+    setErrorMessage(null);
+    setInfoMessage(null);
+    setConfirmPassword('');
   };
 
   return (
@@ -114,12 +189,49 @@ const LoginView: React.FC<LoginViewProps> = ({ onLogin }) => {
 
         {/* Right Side - Login Form */}
         <div className="w-full md:w-1/2 p-8 md:p-12 flex flex-col justify-center bg-white">
-          <div className="mb-8">
+          <div className="mb-6">
             <h2 className="text-2xl md:text-3xl font-bold text-gray-900">Store Access</h2>
-            <p className="text-gray-500 mt-2">Log in to manage your business.</p>
+            <p className="text-gray-500 mt-2">
+              {mode === 'signin' ? 'Log in to manage your business.' : 'Create an account to get started.'}
+            </p>
           </div>
 
-          <form onSubmit={handleLogin} className="space-y-5">
+          {/* Sign In / Create Account toggle */}
+          <div className="flex bg-gray-100 rounded-xl p-1 mb-6">
+            <button
+              type="button"
+              onClick={() => switchMode('signin')}
+              className={`flex-1 py-2.5 rounded-lg text-sm font-bold transition ${
+                mode === 'signin' ? 'bg-white text-indigo-600 shadow-sm' : 'text-gray-500'
+              }`}
+            >
+              Sign In
+            </button>
+            <button
+              type="button"
+              onClick={() => switchMode('signup')}
+              className={`flex-1 py-2.5 rounded-lg text-sm font-bold transition ${
+                mode === 'signup' ? 'bg-white text-indigo-600 shadow-sm' : 'text-gray-500'
+              }`}
+            >
+              Create Account
+            </button>
+          </div>
+
+          {errorMessage && (
+            <div className="mb-5 flex items-start gap-2 bg-red-50 border border-red-100 text-red-700 text-sm rounded-xl p-3">
+              <AlertCircle size={18} className="shrink-0 mt-0.5" />
+              <span>{errorMessage}</span>
+            </div>
+          )}
+          {infoMessage && (
+            <div className="mb-5 flex items-start gap-2 bg-green-50 border border-green-100 text-green-700 text-sm rounded-xl p-3">
+              <CheckCircle2 size={18} className="shrink-0 mt-0.5" />
+              <span>{infoMessage}</span>
+            </div>
+          )}
+
+          <form onSubmit={handleSubmit} className="space-y-5">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">Email</label>
               <div className="relative">
@@ -145,17 +257,49 @@ const LoginView: React.FC<LoginViewProps> = ({ onLogin }) => {
                   placeholder="••••••••"
                   className="w-full pl-10 pr-4 py-3 border border-gray-200 bg-gray-50 rounded-xl focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition"
                   required
+                  minLength={6}
                 />
                 <Lock className="absolute left-3 top-3.5 text-gray-400" size={20} />
               </div>
             </div>
 
+            {mode === 'signup' && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Confirm Password</label>
+                <div className="relative">
+                  <input 
+                    type="password" 
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    placeholder="••••••••"
+                    className="w-full pl-10 pr-4 py-3 border border-gray-200 bg-gray-50 rounded-xl focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition"
+                    required
+                    minLength={6}
+                  />
+                  <Lock className="absolute left-3 top-3.5 text-gray-400" size={20} />
+                </div>
+              </div>
+            )}
+
             <div className="flex items-center justify-between text-sm">
                <label className="flex items-center gap-2 text-gray-600 cursor-pointer">
-                 <input type="checkbox" className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500" />
+                 <input
+                   type="checkbox"
+                   checked={rememberMe}
+                   onChange={(e) => setRememberMe(e.target.checked)}
+                   className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                 />
                  Remember me
                </label>
-               <a href="#" className="text-indigo-600 font-bold hover:underline">Forgot password?</a>
+               {mode === 'signin' && (
+                 <button
+                   type="button"
+                   onClick={handleForgotPassword}
+                   className="text-indigo-600 font-bold hover:underline"
+                 >
+                   Forgot password?
+                 </button>
+               )}
             </div>
 
             <button 
@@ -166,7 +310,7 @@ const LoginView: React.FC<LoginViewProps> = ({ onLogin }) => {
               {isLoading ? (
                 <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
               ) : (
-                <>Sign In <ArrowRight size={20} /></>
+                <>{mode === 'signin' ? 'Sign In' : 'Create Account'} <ArrowRight size={20} /></>
               )}
             </button>
           </form>

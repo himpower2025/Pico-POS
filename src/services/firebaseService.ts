@@ -13,8 +13,31 @@ import {
   increment, 
   serverTimestamp,
   writeBatch,
-  QueryDocumentSnapshot
+  query,
+  where,
+  orderBy,
+  limit,
+  startAfter,
+  onSnapshot,
+  QueryDocumentSnapshot,
+  type Unsubscribe,
+  type QueryConstraint
 } from 'firebase/firestore';
+import {
+  getAuth,
+  onAuthStateChanged,
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  signInWithPopup,
+  GoogleAuthProvider,
+  signOut,
+  sendPasswordResetEmail,
+  setPersistence,
+  browserLocalPersistence,
+  browserSessionPersistence,
+  type User,
+  type UserCredential
+} from 'firebase/auth';
 import { MenuItem, Order, StoreProfile } from '../types';
 // Firebase configuration with environment variable support and default fallbacks for AI Studio/local development
 const firebaseConfig = {
@@ -36,9 +59,74 @@ const db = initializeFirestore(app, {
   })
 }, firebaseConfig.firestoreDatabaseId);
 
-// A unique ID or email to partition store data securely
-const getStoreSlug = (profile: StoreProfile) => {
-  return profile.name.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+// Firebase Authentication instance. All store data is now partitioned by the
+// signed-in owner's Auth UID, so this MUST be initialized before any store
+// data is read or written.
+export const auth = getAuth(app);
+
+/**
+ * AUTH: Set whether the session should persist across browser restarts
+ * ("Remember me") or only for the current tab/session. Call this before
+ * signing in or registering.
+ */
+export const setAuthPersistence = (rememberMe: boolean) => {
+  return setPersistence(auth, rememberMe ? browserLocalPersistence : browserSessionPersistence);
+};
+
+/**
+ * AUTH: Create a new store owner account with email + password.
+ */
+export const registerWithEmail = (email: string, password: string): Promise<UserCredential> => {
+  return createUserWithEmailAndPassword(auth, email, password);
+};
+
+/**
+ * AUTH: Sign in an existing store owner with email + password.
+ */
+export const signInWithEmail = (email: string, password: string): Promise<UserCredential> => {
+  return signInWithEmailAndPassword(auth, email, password);
+};
+
+/**
+ * AUTH: Sign in (or, on first use, sign up) with a Google account via popup.
+ */
+export const signInWithGoogleAccount = (): Promise<UserCredential> => {
+  const provider = new GoogleAuthProvider();
+  return signInWithPopup(auth, provider);
+};
+
+/**
+ * AUTH: Send a password reset email to the given address.
+ */
+export const sendPasswordReset = (email: string): Promise<void> => {
+  return sendPasswordResetEmail(auth, email);
+};
+
+/**
+ * AUTH: Sign the current user out.
+ */
+export const signOutUser = (): Promise<void> => {
+  return signOut(auth);
+};
+
+/**
+ * AUTH: Subscribe to auth state changes (e.g. to restore a session on app
+ * load without forcing the user to log in again). Returns the unsubscribe
+ * function.
+ */
+export const subscribeToAuthChanges = (callback: (user: User | null) => void) => {
+  return onAuthStateChanged(auth, callback);
+};
+
+// The store's unique path identifier is always the Firebase Auth UID of its
+// owner (profile.ownerId). This keeps every data path in sync with the
+// Firestore security rules, which only allow a signed-in user to read/write
+// documents stored under their own UID — no name- or email-derived slugs.
+const getStoreId = (profile: StoreProfile) => {
+  if (!profile.ownerId) {
+    throw new Error('StoreProfile is missing ownerId (Firebase Auth UID). Cannot resolve store path.');
+  }
+  return profile.ownerId;
 };
 
 /**
@@ -52,7 +140,7 @@ export const syncMenuWithCache = async (
   profile: StoreProfile,
   initialMenu: MenuItem[]
 ): Promise<MenuItem[]> => {
-  const storeSlug = getStoreSlug(profile);
+  const storeSlug = getStoreId(profile);
   const metaDocRef = doc(db, `stores/${storeSlug}/metadata`, 'menu_version');
   const menuColRef = collection(db, `stores/${storeSlug}/menu`);
 
@@ -128,7 +216,7 @@ export const syncMenuWithCache = async (
  * Triggers a menu modification on the server and increments menu version
  */
 export const updateServerMenuItem = async (profile: StoreProfile, item: MenuItem) => {
-  const storeSlug = getStoreSlug(profile);
+  const storeSlug = getStoreId(profile);
   const itemRef = doc(db, `stores/${storeSlug}/menu`, item.id);
   const metaDocRef = doc(db, `stores/${storeSlug}/metadata`, 'menu_version');
 
@@ -159,7 +247,7 @@ export const updateServerMenuItem = async (profile: StoreProfile, item: MenuItem
  * Deletes a menu item on the server and increments version
  */
 export const deleteServerMenuItem = async (profile: StoreProfile, itemId: string) => {
-  const storeSlug = getStoreSlug(profile);
+  const storeSlug = getStoreId(profile);
   const itemRef = doc(db, `stores/${storeSlug}/menu`, itemId);
   const metaDocRef = doc(db, `stores/${storeSlug}/metadata`, 'menu_version');
 
@@ -197,7 +285,7 @@ export const placeFirebaseOrder = async (
   order: Order,
   menu: MenuItem[]
 ) => {
-  const storeSlug = getStoreSlug(profile);
+  const storeSlug = getStoreId(profile);
   const dateStr = new Date(order.timestamp).toISOString().split('T')[0]; // YYYY-MM-DD
   
   const orderRef = doc(db, `stores/${storeSlug}/orders`, order.id);
@@ -236,7 +324,7 @@ export const placeFirebaseOrder = async (
  * Update an order's status securely on the server
  */
 export const updateServerOrderStatus = async (profile: StoreProfile, orderId: string, status: string) => {
-  const storeSlug = getStoreSlug(profile);
+  const storeSlug = getStoreId(profile);
   const orderRef = doc(db, `stores/${storeSlug}/orders`, orderId);
   await updateDoc(orderRef, { status });
 };
@@ -250,7 +338,7 @@ export const refundFirebaseOrder = async (
   order: Order,
   menu: MenuItem[]
 ) => {
-  const storeSlug = getStoreSlug(profile);
+  const storeSlug = getStoreId(profile);
   const dateStr = new Date(order.timestamp).toISOString().split('T')[0];
   
   const orderRef = doc(db, `stores/${storeSlug}/orders`, order.id);
@@ -283,7 +371,7 @@ export const refundFirebaseOrder = async (
  * This loads only summary rows, avoiding fetching thousands of order items.
  */
 export const getSalesSummaries = async (profile: StoreProfile): Promise<any[]> => {
-  const storeSlug = getStoreSlug(profile);
+  const storeSlug = getStoreId(profile);
   const summariesColRef = collection(db, `stores/${storeSlug}/daily_summaries`);
   
   try {
@@ -300,10 +388,13 @@ export const getSalesSummaries = async (profile: StoreProfile): Promise<any[]> =
 };
 
 /**
- * Fetch detailed orders (for transaction list)
+ * Fetch ALL detailed orders, no date limit, no pagination.
+ * ⚠️ Expensive: cost scales with the store's entire order history. Only use
+ * this for a full export/backup — the transaction list screen should use
+ * getRecentOrders() below instead.
  */
 export const getDetailedOrders = async (profile: StoreProfile): Promise<Order[]> => {
-  const storeSlug = getStoreSlug(profile);
+  const storeSlug = getStoreId(profile);
   const ordersColRef = collection(db, `stores/${storeSlug}/orders`);
   
   try {
@@ -326,10 +417,144 @@ export const getDetailedOrders = async (profile: StoreProfile): Promise<Order[]>
 };
 
 /**
+ * Fetch a page of recent orders for the transaction list screen.
+ * The FIRST page (no startAfterDoc) is bounded to the last `days` days, so a
+ * routine screen visit only pays for a small, predictable slice. Once the
+ * user explicitly asks for older data (passing startAfterDoc), the day
+ * cutoff is dropped and pagination just continues back through history by
+ * cursor — so cost only grows when the store owner actually asks to see
+ * further back, `pageSize` rows at a time.
+ */
+export const getRecentOrders = async (
+  profile: StoreProfile,
+  options?: { days?: number; pageSize?: number; startAfterDoc?: QueryDocumentSnapshot }
+): Promise<{ orders: Order[]; lastDoc: QueryDocumentSnapshot | null }> => {
+  const storeSlug = getStoreId(profile);
+  const ordersColRef = collection(db, `stores/${storeSlug}/orders`);
+  const days = options?.days ?? 7;
+  const pageSize = options?.pageSize ?? 50;
+
+  const constraints: QueryConstraint[] = [orderBy('timestamp', 'desc')];
+
+  if (options?.startAfterDoc) {
+    // Paging further back into history at the user's explicit request —
+    // no day cutoff, just continue from where the last page left off.
+    constraints.push(startAfter(options.startAfterDoc));
+  } else {
+    // First page of a fresh screen visit — bound the read to a recent window.
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - days);
+    constraints.unshift(where('timestamp', '>=', cutoff.toISOString()));
+  }
+  constraints.push(limit(pageSize));
+
+  try {
+    const querySnap = await getDocs(query(ordersColRef, ...constraints));
+    const orders: Order[] = [];
+    querySnap.forEach((docSnap: QueryDocumentSnapshot) => {
+      const data = docSnap.data();
+      orders.push({
+        ...data,
+        id: docSnap.id,
+        timestamp: new Date(data.timestamp)
+      } as Order);
+    });
+    const lastDoc = querySnap.docs.length > 0 ? querySnap.docs[querySnap.docs.length - 1] : null;
+    return { orders, lastDoc };
+  } catch (err) {
+    console.error('[Firebase] Failed to fetch recent orders:', err);
+    return { orders: [], lastDoc: null };
+  }
+};
+
+/**
+ * REAL-TIME: Listen to TODAY's orders — every status, not just active ones.
+ * This is what keeps multiple terminals (counter, kitchen display, a
+ * manager's dashboard) in sync: a new ticket created at the counter shows
+ * up on the kitchen board immediately, and a status change made on the
+ * kitchen board (cooking → ready → completed) is reflected everywhere else
+ * too, since it's the same underlying order document.
+ *
+ * Scoped to today only (Strategy ①) — cost is bounded by today's order
+ * volume, not the store's entire history. Cross-device visibility into
+ * changes on OLDER orders (e.g. refunding a 3-day-old order from another
+ * device) is not covered by this listener; those reconcile on next login.
+ *
+ * Call the returned unsubscribe function in your component's useEffect
+ * cleanup so the listener doesn't keep running after the screen unmounts.
+ */
+export const subscribeToTodaysOrders = (
+  profile: StoreProfile,
+  onChange: (orders: Order[]) => void,
+  onError?: (error: Error) => void
+): Unsubscribe => {
+  const storeSlug = getStoreId(profile);
+  const ordersColRef = collection(db, `stores/${storeSlug}/orders`);
+
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 0, 0);
+
+  const q = query(ordersColRef, where('timestamp', '>=', todayStart.toISOString()));
+
+  return onSnapshot(
+    q,
+    (snapshot) => {
+      const orders: Order[] = [];
+      snapshot.forEach((docSnap: QueryDocumentSnapshot) => {
+        const data = docSnap.data();
+        orders.push({
+          ...data,
+          id: docSnap.id,
+          timestamp: new Date(data.timestamp)
+        } as Order);
+      });
+      orders.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
+      onChange(orders);
+    },
+    (err) => {
+      console.error('[Firebase Realtime] Failed to listen to today\'s orders:', err);
+      onError?.(err as Error);
+    }
+  );
+};
+
+/**
+ * REAL-TIME: Listen to just today's daily_summaries document (a single
+ * document, so this is about as cheap as a listener can be) so the
+ * Dashboard's revenue/profit/order-count KPIs stay live across devices as
+ * new sales come in, without re-reading any order documents.
+ */
+export const subscribeToTodaySummary = (
+  profile: StoreProfile,
+  onChange: (summary: { id: string; date: string; revenue: number; profit: number; orderCount: number }) => void,
+  onError?: (error: Error) => void
+): Unsubscribe => {
+  const storeSlug = getStoreId(profile);
+  const dateStr = new Date().toISOString().split('T')[0];
+  const summaryRef = doc(db, `stores/${storeSlug}/daily_summaries`, dateStr);
+
+  return onSnapshot(
+    summaryRef,
+    (snap) => {
+      if (snap.exists()) {
+        const data = snap.data();
+        onChange({ id: snap.id, date: dateStr, revenue: data.revenue || 0, profit: data.profit || 0, orderCount: data.orderCount || 0 });
+      } else {
+        onChange({ id: dateStr, date: dateStr, revenue: 0, profit: 0, orderCount: 0 });
+      }
+    },
+    (err) => {
+      console.error('[Firebase Realtime] Failed to listen to today\'s summary:', err);
+      onError?.(err as Error);
+    }
+  );
+};
+
+/**
  * Synchronize tables status securely
  */
 export const syncTablesWithFirebase = async (profile: StoreProfile, tables: any[]): Promise<any[]> => {
-  const storeSlug = getStoreSlug(profile);
+  const storeSlug = getStoreId(profile);
   const tablesDocRef = doc(db, `stores/${storeSlug}/layout`, 'tables');
 
   try {
@@ -351,7 +576,7 @@ export const syncTablesWithFirebase = async (profile: StoreProfile, tables: any[
  * Save updated tables layout securely
  */
 export const saveTablesToFirebase = async (profile: StoreProfile, tables: any[]) => {
-  const storeSlug = getStoreSlug(profile);
+  const storeSlug = getStoreId(profile);
   const tablesDocRef = doc(db, `stores/${storeSlug}/layout`, 'tables');
   await setDoc(tablesDocRef, { tables });
 };
@@ -360,17 +585,47 @@ export const saveTablesToFirebase = async (profile: StoreProfile, tables: any[])
  * Save store profile changes to cloud
  */
 export const saveStoreProfileToFirebase = async (profile: StoreProfile) => {
-  const storeSlug = getStoreSlug(profile);
+  const storeSlug = getStoreId(profile);
   const profileDocRef = doc(db, `stores/${storeSlug}/layout`, 'profile');
   await setDoc(profileDocRef, profile);
 };
 
 /**
- * Load store profile from cloud if exists
+ * REAL-TIME: Listen to the store's own profile document. This matters most
+ * for subscription status — once RevenueCat webhooks start writing
+ * subscriptionStatus/subscriptionMonthsPaid server-side (via Cloud
+ * Functions), this is how the client finds out without a manual refresh.
  */
-export const loadStoreProfileFromFirebase = async (email: string): Promise<StoreProfile | null> => {
-  const storeSlug = email.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+export const subscribeToStoreProfile = (
+  profile: StoreProfile,
+  onChange: (profile: StoreProfile) => void,
+  onError?: (error: Error) => void
+): Unsubscribe => {
+  const storeSlug = getStoreId(profile);
   const profileDocRef = doc(db, `stores/${storeSlug}/layout`, 'profile');
+
+  return onSnapshot(
+    profileDocRef,
+    (snap) => {
+      if (snap.exists()) {
+        onChange(snap.data() as StoreProfile);
+      }
+    },
+    (err) => {
+      console.error('[Firebase Realtime] Failed to listen to store profile:', err);
+      onError?.(err as Error);
+    }
+  );
+};
+
+/**
+ * Load store profile from cloud if exists. `uid` is the Firebase Auth UID of
+ * the signed-in owner (previously this took an email address and derived a
+ * slug from it, which didn't match the name-based path used everywhere else —
+ * using the UID directly fixes that mismatch as well).
+ */
+export const loadStoreProfileFromFirebase = async (uid: string): Promise<StoreProfile | null> => {
+  const profileDocRef = doc(db, `stores/${uid}/layout`, 'profile');
   
   try {
     const docSnap = await getDoc(profileDocRef);
