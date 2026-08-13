@@ -83,11 +83,25 @@ export const subscribeToCustomerInfoUpdates = (
 ): (() => void) => {
   if (!isNativePurchasesAvailable()) return () => {};
 
-  const listenerPromise = Purchases.addCustomerInfoUpdateListener((info) => {
+  let callbackId: string | null = null;
+  let cancelled = false;
+
+  Purchases.addCustomerInfoUpdateListener((info) => {
     onChange(info);
+  }).then((id) => {
+    if (cancelled) {
+      // Unsubscribe was called before the registration finished — remove
+      // it immediately instead of leaving it attached.
+      Purchases.removeCustomerInfoUpdateListener({ listenerToRemove: id }).catch(() => {});
+    } else {
+      callbackId = id;
+    }
   });
 
   return () => {
-    listenerPromise.then((listener) => listener.remove()).catch(() => {});
+    cancelled = true;
+    if (callbackId) {
+      Purchases.removeCustomerInfoUpdateListener({ listenerToRemove: callbackId }).catch(() => {});
+    }
   };
 };
