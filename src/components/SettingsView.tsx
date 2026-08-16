@@ -1,4 +1,5 @@
 import React, { useState, useRef } from 'react';
+import { Capacitor } from '@capacitor/core';
 import { CreditCard, Wifi, Edit, Plus, Trash2, LayoutTemplate, Coffee, Printer, Bluetooth, Building2, PaintBucket, CloudSun, ShieldAlert, RefreshCw, Camera, Upload, Image as ImageIcon } from 'lucide-react';
 import { StoreProfile, MenuItem, Table } from '../types';
 import { formatCurrency } from '../lib/utils';
@@ -159,6 +160,11 @@ const SettingsView: React.FC<SettingsViewProps> = ({
   // Hardware State
   const [connectedPrinter, setConnectedPrinter] = useState<string | null>(null);
   const [isScanning, setIsScanning] = useState(false);
+  // Web Bluetooth (used by connectPrinter below) doesn't exist in iOS's
+  // WKWebView at all — it's not a permissions issue, Apple has never
+  // implemented it. Android's Capacitor WebView is Chromium-based and does
+  // support it, so only iOS needs the fallback UI.
+  const isIOSNative = Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'ios';
 
   // --- Menu Handlers ---
   const handleSaveItem = () => {
@@ -882,20 +888,31 @@ const SettingsView: React.FC<SettingsViewProps> = ({
                                     </span>
                                 </div>
                                 <p className="text-xs text-gray-400">
-                                    For iOS/Android Tablets: Use system settings to pair your printer first. Then use the standard "Print Invoice" button.
+                                    {isIOSNative
+                                      ? 'Bluetooth printer pairing isn\'t available on iOS. Pair your printer in iOS Settings, then use the standard "Print Invoice" button (AirPrint).'
+                                      : 'For iOS/Android Tablets: Use system settings to pair your printer first. Then use the standard "Print Invoice" button.'}
                                 </p>
                             </div>
-                            <button 
-                                onClick={connectPrinter}
-                                disabled={isScanning}
-                                className="w-full bg-slate-900 hover:bg-black text-white py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition"
-                            >
-                                {isScanning ? (
-                                    <>Scanning...</>
-                                ) : (
-                                    <><Bluetooth size={18} /> Scan Bluetooth Printer (Web API)</>
-                                )}
-                            </button>
+                            {isIOSNative ? (
+                                <button
+                                    disabled
+                                    className="w-full bg-gray-100 text-gray-400 py-3 rounded-xl font-bold flex items-center justify-center gap-2 cursor-not-allowed"
+                                >
+                                    <Printer size={18} /> Use "Print Invoice" instead
+                                </button>
+                            ) : (
+                                <button 
+                                    onClick={connectPrinter}
+                                    disabled={isScanning}
+                                    className="w-full bg-slate-900 hover:bg-black text-white py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition"
+                                >
+                                    {isScanning ? (
+                                        <>Scanning...</>
+                                    ) : (
+                                        <><Bluetooth size={18} /> Scan Bluetooth Printer (Web API)</>
+                                    )}
+                                </button>
+                            )}
                         </div>
 
                          {/* Card Reader Placeholder */}

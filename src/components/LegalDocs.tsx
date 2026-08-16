@@ -6,7 +6,7 @@ export const TermsOfService: React.FC = () => {
     <div className="space-y-6 text-gray-700">
       <div>
         <h3 className="text-xl font-bold text-gray-900 mb-2">Pico POS Terms of Service</h3>
-        <p className="text-sm text-gray-500">Last updated: July 6, 2026</p>
+        <p className="text-sm text-gray-500">Last updated: August 14, 2026</p>
       </div>
 
       <p className="leading-relaxed">
@@ -75,9 +75,11 @@ export const TermsOfService: React.FC = () => {
           4. Subscriptions, Fees & Refunds
         </h4>
         <p className="leading-relaxed pl-6">
-          All payments are handled securely through third-party billing providers. Subscriptions are billed in advance. 
-          Except as explicitly required by local consumer laws, all subscription fees are non-refundable. Monthly subscriptions 
-          renew automatically unless canceled before the billing cycle date.
+          All payments are handled securely through third-party billing providers — the Apple App Store, Google Play, 
+          and RevenueCat when purchased in the app. Subscriptions are billed in advance. Except as explicitly required 
+          by local consumer laws, all subscription fees are non-refundable. Monthly subscriptions renew automatically 
+          unless canceled before the billing cycle date. Renewals, cancellations, and refund requests for 
+          app-purchased subscriptions are handled through your Apple ID or Google Play account settings.
         </p>
       </section>
 
@@ -114,7 +116,7 @@ export const PrivacyPolicy: React.FC = () => {
     <div className="space-y-6 text-gray-700">
       <div>
         <h3 className="text-xl font-bold text-gray-900 mb-2">Pico POS Privacy Policy</h3>
-        <p className="text-sm text-gray-500">Last updated: July 6, 2026</p>
+        <p className="text-sm text-gray-500">Last updated: August 14, 2026</p>
       </div>
 
       <p className="leading-relaxed">
@@ -167,7 +169,7 @@ export const PrivacyPolicy: React.FC = () => {
         <ul className="list-disc pl-12 space-y-2 leading-relaxed">
           <li>Provide core point-of-sale functionality, cloud backups, and transaction history.</li>
           <li>Power optional AI business insights (e.g., sales forecasting or inventory suggestions via LLM integration).</li>
-          <li>Deliver payment processing settlements through licensed financial gateways (eSewa, credit terminals).</li>
+          <li>Process subscription payments through the Apple App Store, Google Play, and RevenueCat (subscription management) — we never see or store your card details.</li>
           <li>Comply with valid court orders or legal auditing processes in accordance with Nepalese and international compliance laws.</li>
         </ul>
       </section>

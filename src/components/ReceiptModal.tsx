@@ -206,7 +206,10 @@ const ReceiptModal: React.FC<ReceiptModalProps> = ({ order, onClose, storeProfil
         
         {/* Dynamic Printing Options Area */}
         <div className="p-4 bg-gray-50 border-t space-y-4 no-print">
-            {/* Bluetooth Integration Container */}
+            {/* Bluetooth Integration Container — Web Bluetooth doesn't exist in
+                iOS's WKWebView at all, so there's no working pairing flow to
+                offer there. Android/desktop browsers do support it. */}
+            {isBluetoothSupported() ? (
             <div className="bg-white p-3 rounded-xl border border-gray-200 space-y-3">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-black uppercase text-gray-400 tracking-wider flex items-center gap-1.5">
@@ -307,6 +310,14 @@ const ReceiptModal: React.FC<ReceiptModalProps> = ({ order, onClose, storeProfil
                 </div>
               )}
             </div>
+            ) : (
+              <div className="bg-white p-3 rounded-xl border border-gray-200 text-center">
+                <p className="text-[11px] text-gray-400 leading-relaxed">
+                  Direct thermal printing isn't available on this device. Pair your printer in system
+                  settings, then use "System Print" below.
+                </p>
+              </div>
+            )}
 
             {/* Default PDF/AirPrint Print Fallback */}
             {order.status === 'refunded' ? (
