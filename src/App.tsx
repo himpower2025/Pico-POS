@@ -32,6 +32,9 @@ import {
   updateServerOrderStatus
 } from './services/firebaseService';
 import { initializePurchases } from './services/purchasesService';
+import { getAccountCreatedAt } from './services/firebaseService';
+import { resolveLicense } from './lib/license';
+import LicenseGate from './components/LicenseGate';
 import type { QueryDocumentSnapshot } from 'firebase/firestore';
 
 // Merge a batch of incoming orders into the existing list, upserting by id.
@@ -148,6 +151,9 @@ const INITIAL_TABLES: Table[] = [
 const App: React.FC = () => {
   const [storeProfile, setStoreProfile] = useState<StoreProfile | null>(null);
   const [isCheckingSession, setIsCheckingSession] = useState(true);
+  // Trial clock. Read from Firebase Auth metadata (server-issued, read-only)
+  // rather than Firestore, so a store owner can't back-date it.
+  const [accountCreatedAt, setAccountCreatedAt] = useState<string | null>(null);
   const [mode, setMode] = useState<AppMode>(AppMode.POS);
   const [orders, setOrders] = useState<Order[]>([]);
   const [summaries, setSummaries] = useState<any[]>([]);
@@ -197,6 +203,8 @@ const App: React.FC = () => {
     const unsubscribe = subscribeToAuthChanges(async (user) => {
       if (!isFirstCheck) return;
       isFirstCheck = false;
+
+      setAccountCreatedAt(user?.metadata?.creationTime ?? null);
 
       if (user) {
         try {
@@ -362,8 +370,17 @@ const App: React.FC = () => {
 
   // If not logged in, show Login View
   if (!storeProfile) {
-    return <LoginView onLogin={(profile) => setStoreProfile(profile)} />;
+    return (
+      <LoginView
+        onLogin={(profile) => {
+          setStoreProfile(profile);
+          setAccountCreatedAt(getAccountCreatedAt());
+        }}
+      />
+    );
   }
+
+  const license = resolveLicense(storeProfile, accountCreatedAt);
 
   const handlePlaceOrder = async (
     tableId: number, 
@@ -556,16 +573,22 @@ const App: React.FC = () => {
     switch (mode) {
       case AppMode.POS:
         return (
-          <PosView 
-            key={posKey}
-            tables={tables} 
-            menu={menu} 
-            orders={orders}
-            onUpdateOrders={handleUpdateOrders}
-            onUpdateTables={handleUpdateTables}
-            onPlaceOrder={handlePlaceOrder} 
-            storeProfile={storeProfile}
-          />
+          <LicenseGate
+            license={license}
+            onGoToSubscription={() => setMode(AppMode.SETTINGS)}
+            onGoToDashboard={() => setMode(AppMode.DASHBOARD)}
+          >
+            <PosView 
+              key={posKey}
+              tables={tables} 
+              menu={menu} 
+              orders={orders}
+              onUpdateOrders={handleUpdateOrders}
+              onUpdateTables={handleUpdateTables}
+              onPlaceOrder={handlePlaceOrder} 
+              storeProfile={storeProfile}
+            />
+          </LicenseGate>
         );
       case AppMode.DASHBOARD:
         return (

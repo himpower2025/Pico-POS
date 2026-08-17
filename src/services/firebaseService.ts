@@ -1,17 +1,16 @@
-import { initializeApp } from 'firebase/app';
-import { 
-  initializeFirestore, 
-  persistentLocalCache, 
+import { initializeApp, type FirebaseApp } from 'firebase/app';
+import {
+  initializeFirestore,
+  persistentLocalCache,
   persistentMultipleTabManager,
-  collection, 
-  doc, 
-  getDoc, 
-  getDocs, 
-  setDoc, 
+  collection,
+  doc,
+  getDoc,
+  getDocs,
+  setDoc,
   updateDoc,
   deleteDoc,
-  increment, 
-  serverTimestamp,
+  increment,
   writeBatch,
   query,
   where,
@@ -29,99 +28,233 @@ import {
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
   signInWithPopup,
+  signInWithCredential,
   GoogleAuthProvider,
+  OAuthProvider,
   signOut,
   sendPasswordResetEmail,
   setPersistence,
   browserLocalPersistence,
   browserSessionPersistence,
+  indexedDBLocalPersistence,
   type User,
   type UserCredential
 } from 'firebase/auth';
+import { getFunctions, httpsCallable } from 'firebase/functions';
+import { Capacitor } from '@capacitor/core';
+import { FirebaseAuthentication } from '@capacitor-firebase/authentication';
 import { MenuItem, Order, StoreProfile } from '../types';
-// Firebase configuration with environment variable support and default fallbacks for AI Studio/local development
-const firebaseConfig = {
-  projectId: (import.meta as any).env.VITE_FIREBASE_PROJECT_ID || "himpower-2b10b",
-  appId: (import.meta as any).env.VITE_FIREBASE_APP_ID || "1:877849012676:web:d841108fa16ad8d2cadc91",
-  apiKey: (import.meta as any).env.VITE_FIREBASE_API_KEY || "AIzaSyBoZYams0NPnz4PQwmo65lZjECskbYdUpw",
-  authDomain: (import.meta as any).env.VITE_FIREBASE_AUTH_DOMAIN || "himpower-2b10b.firebaseapp.com",
-  firestoreDatabaseId: (import.meta as any).env.VITE_FIREBASE_DATABASE_ID || "ai-studio-picoposbyhimpowe-63fcd72d-cd61-44bb-8ac6-eb9312bd69a4",
-  storageBucket: (import.meta as any).env.VITE_FIREBASE_STORAGE_BUCKET || "himpower-2b10b.firebasestorage.app",
-  messagingSenderId: (import.meta as any).env.VITE_FIREBASE_MESSAGING_SENDER_ID || "877849012676",
-  measurementId: (import.meta as any).env.VITE_FIREBASE_MEASUREMENT_ID || "",
+
+// ═══════════════════════════════════════════════════════════════════════
+// Configuration
+//
+// All values come from environment variables — no hardcoded fallbacks.
+// The previous version fell back to the `himpower-2b10b` project, which
+// is NOT the production project, so a missing .env silently pointed the
+// app at the wrong database. Failing loudly is better.
+//
+// Copy .env.example → .env.local and fill in from:
+//   Firebase Console → pico-pos → Project settings → Your apps → Web app
+// ═══════════════════════════════════════════════════════════════════════
+
+const env = (import.meta as any).env;
+
+const required = (key: string): string => {
+  const value = env[key];
+  if (!value) {
+    throw new Error(
+      `[Pico] Missing environment variable ${key}. ` +
+        `Copy .env.example to .env.local and fill in the Firebase config for the pico-pos project.`
+    );
+  }
+  return value;
 };
 
-// Initialize Firebase with persistent local offline cache enabled automatically
-const app = initializeApp(firebaseConfig);
+const firebaseConfig = {
+  projectId: required('VITE_FIREBASE_PROJECT_ID'),
+  appId: required('VITE_FIREBASE_APP_ID'),
+  apiKey: required('VITE_FIREBASE_API_KEY'),
+  authDomain: required('VITE_FIREBASE_AUTH_DOMAIN'),
+  storageBucket: env.VITE_FIREBASE_STORAGE_BUCKET || '',
+  messagingSenderId: required('VITE_FIREBASE_MESSAGING_SENDER_ID'),
+  measurementId: env.VITE_FIREBASE_MEASUREMENT_ID || ''
+};
+
+const app: FirebaseApp = initializeApp(firebaseConfig);
+
+// NOTE: no databaseId argument — this app now uses the "(default)" Firestore
+// database. The Admin SDK in functions/ also uses the default, so the
+// RevenueCat webhook and the client finally read/write the same place.
 const db = initializeFirestore(app, {
   localCache: persistentLocalCache({
     tabManager: persistentMultipleTabManager()
   })
-}, firebaseConfig.firestoreDatabaseId);
+});
 
-// Firebase Authentication instance. All store data is now partitioned by the
-// signed-in owner's Auth UID, so this MUST be initialized before any store
-// data is read or written.
 export const auth = getAuth(app);
+const functions = getFunctions(app, 'us-central1');
+
+const isNative = (): boolean => Capacitor.isNativePlatform();
+
+// ═══════════════════════════════════════════════════════════════════════
+// AUTH
+// ═══════════════════════════════════════════════════════════════════════
 
 /**
- * AUTH: Set whether the session should persist across browser restarts
- * ("Remember me") or only for the current tab/session. Call this before
- * signing in or registering.
+ * "Remember me". On native, browserLocalPersistence isn't available inside
+ * the WebView in the same way — indexedDBLocalPersistence is the correct
+ * choice there, and there is no meaningful "session only" mode because the
+ * WebView process is the app.
  */
 export const setAuthPersistence = (rememberMe: boolean) => {
+  if (isNative()) {
+    return setPersistence(auth, indexedDBLocalPersistence);
+  }
   return setPersistence(auth, rememberMe ? browserLocalPersistence : browserSessionPersistence);
 };
 
+export const registerWithEmail = (email: string, password: string): Promise<UserCredential> =>
+  createUserWithEmailAndPassword(auth, email, password);
+
+export const signInWithEmail = (email: string, password: string): Promise<UserCredential> =>
+  signInWithEmailAndPassword(auth, email, password);
+
+export const sendPasswordReset = (email: string): Promise<void> =>
+  sendPasswordResetEmail(auth, email);
+
 /**
- * AUTH: Create a new store owner account with email + password.
+ * Google sign-in.
+ *
+ * WHY THIS IS SPLIT BY PLATFORM: signInWithPopup opens a Google OAuth page
+ * inside the app's WebView, and Google BLOCKS OAuth in embedded WebViews
+ * (`disallowed_useragent`). That means the old implementation silently
+ * failed on both iOS and Android builds. On native we hand off to the
+ * system browser / Google Sign-In SDK via the Capacitor plugin, then feed
+ * the returned ID token back into the JS SDK so Firestore sees the session.
+ *
+ * Requires `skipNativeAuth: true` in capacitor.config.ts — see
+ * MIGRATION_GUIDE.md § Native auth setup.
  */
-export const registerWithEmail = (email: string, password: string): Promise<UserCredential> => {
-  return createUserWithEmailAndPassword(auth, email, password);
+export const signInWithGoogleAccount = async (): Promise<UserCredential> => {
+  if (!isNative()) {
+    return signInWithPopup(auth, new GoogleAuthProvider());
+  }
+
+  const result = await FirebaseAuthentication.signInWithGoogle({ skipNativeAuth: true });
+  const idToken = result.credential?.idToken;
+  if (!idToken) {
+    throw { code: 'auth/no-credential' };
+  }
+  const credential = GoogleAuthProvider.credential(idToken);
+  return signInWithCredential(auth, credential);
 };
 
 /**
- * AUTH: Sign in an existing store owner with email + password.
+ * Sign in with Apple.
+ *
+ * NOT optional: App Store Review Guideline 4.8 requires that any app
+ * offering a third-party login (Google, in our case) also offers a login
+ * option that limits collection to name + email, lets the user hide their
+ * email, and does no ad tracking. Sign in with Apple is the accepted way to
+ * satisfy it. Shipping Google-only is a guaranteed iOS rejection.
+ *
+ * The nonce handling matters: Apple returns an ID token bound to a nonce,
+ * and Firebase needs the RAW nonce to verify it. The Capacitor plugin
+ * generates and returns it for us.
  */
-export const signInWithEmail = (email: string, password: string): Promise<UserCredential> => {
-  return signInWithEmailAndPassword(auth, email, password);
+export const signInWithAppleAccount = async (): Promise<UserCredential> => {
+  const provider = new OAuthProvider('apple.com');
+  provider.addScope('email');
+  provider.addScope('name');
+
+  if (!isNative()) {
+    // Web / PWA path — requires Apple to be enabled as a provider in the
+    // Firebase console, plus a Services ID configured in the Apple
+    // Developer portal.
+    return signInWithPopup(auth, provider);
+  }
+
+  const result = await FirebaseAuthentication.signInWithApple({ skipNativeAuth: true });
+  const idToken = result.credential?.idToken;
+  if (!idToken) {
+    throw { code: 'auth/no-credential' };
+  }
+  const credential = provider.credential({
+    idToken,
+    rawNonce: result.credential?.nonce
+  });
+  return signInWithCredential(auth, credential);
 };
 
 /**
- * AUTH: Sign in (or, on first use, sign up) with a Google account via popup.
+ * Apple only ever sends the user's display name on the VERY FIRST
+ * authorization. If you don't capture it then, it's gone forever. We don't
+ * currently store a personal name (the store name is what matters), so this
+ * is a no-op today — kept as a reminder not to add a "full name" field
+ * later and wonder why it's always empty for Apple users.
  */
-export const signInWithGoogleAccount = (): Promise<UserCredential> => {
-  const provider = new GoogleAuthProvider();
-  return signInWithPopup(auth, provider);
-};
 
-/**
- * AUTH: Send a password reset email to the given address.
- */
-export const sendPasswordReset = (email: string): Promise<void> => {
-  return sendPasswordResetEmail(auth, email);
-};
-
-/**
- * AUTH: Sign the current user out.
- */
-export const signOutUser = (): Promise<void> => {
+export const signOutUser = async (): Promise<void> => {
+  if (isNative()) {
+    await FirebaseAuthentication.signOut().catch(() => {});
+  }
   return signOut(auth);
 };
 
+export const subscribeToAuthChanges = (callback: (user: User | null) => void) =>
+  onAuthStateChanged(auth, callback);
+
 /**
- * AUTH: Subscribe to auth state changes (e.g. to restore a session on app
- * load without forcing the user to log in again). Returns the unsubscribe
- * function.
+ * When the account was created, as recorded by Firebase Auth itself.
+ *
+ * This is what the free trial is measured from. Deliberately NOT a
+ * Firestore field: anything in Firestore that the owner can write is
+ * something they can back-date to give themselves an unlimited trial.
+ * Auth metadata is server-issued and read-only.
  */
-export const subscribeToAuthChanges = (callback: (user: User | null) => void) => {
-  return onAuthStateChanged(auth, callback);
+export const getAccountCreatedAt = (): string | null =>
+  auth.currentUser?.metadata?.creationTime ?? null;
+
+/**
+ * Permanently delete the signed-in user's account and all store data.
+ * Required by App Store Review Guideline 5.1.1(v) — an "email us to
+ * delete" link is an automatic rejection.
+ */
+export const deleteMyAccount = async (): Promise<void> => {
+  const call = httpsCallable<{ confirm: string }, { success: boolean }>(
+    functions,
+    'deleteMyAccount'
+  );
+  await call({ confirm: 'DELETE' });
+  await signOutUser();
 };
 
-// The store's unique path identifier is always the Firebase Auth UID of its
-// owner (profile.ownerId). This keeps every data path in sync with the
-// Firestore security rules, which only allow a signed-in user to read/write
-// documents stored under their own UID — no name- or email-derived slugs.
+// ═══════════════════════════════════════════════════════════════════════
+// AI (server-proxied — the Gemini key never reaches the device)
+// ═══════════════════════════════════════════════════════════════════════
+
+export const callAnalyzeBusiness = async (stats: unknown, storeName: string): Promise<string> => {
+  const call = httpsCallable<{ stats: unknown; storeName: string }, { text: string }>(
+    functions,
+    'analyzeBusiness'
+  );
+  const result = await call({ stats, storeName });
+  return result.data.text;
+};
+
+export const callForecastSales = async (orderCount: number, revenue: number): Promise<string> => {
+  const call = httpsCallable<{ orderCount: number; revenue: number }, { text: string }>(
+    functions,
+    'forecastSales'
+  );
+  const result = await call({ orderCount, revenue });
+  return result.data.text;
+};
+
+// ═══════════════════════════════════════════════════════════════════════
+// STORE DATA
+// ═══════════════════════════════════════════════════════════════════════
+
 const getStoreId = (profile: StoreProfile) => {
   if (!profile.ownerId) {
     throw new Error('StoreProfile is missing ownerId (Firebase Auth UID). Cannot resolve store path.');
@@ -130,11 +263,8 @@ const getStoreId = (profile: StoreProfile) => {
 };
 
 /**
- * STRATEGY 1: Cache-First Product Menu Loading (Source: Cache Strategy)
- * Instead of reading the entire menu from Firestore on every reload (which incurs high read costs),
- * we check a tiny metadata document containing the last updated timestamp.
- * If the local timestamp matches the server timestamp, we load the menu from localStorage (0 read cost).
- * Otherwise, we pull from the Firestore server and refresh our local cache.
+ * Cache-first menu loading: read one tiny version document instead of the
+ * whole menu collection, and only re-fetch when the version changed.
  */
 export const syncMenuWithCache = async (
   profile: StoreProfile,
@@ -147,33 +277,27 @@ export const syncMenuWithCache = async (
   const localCacheKey = `pico_menu_cache_${storeSlug}`;
   const localVerKey = `pico_menu_version_${storeSlug}`;
 
-  // 1. Get cached menu & version from localStorage
   let cachedMenu: MenuItem[] = [];
   const cachedMenuRaw = localStorage.getItem(localCacheKey);
   if (cachedMenuRaw) {
     try {
       cachedMenu = JSON.parse(cachedMenuRaw);
-    } catch (e) {
+    } catch {
       cachedMenu = [];
     }
   }
   const cachedVersion = localStorage.getItem(localVerKey) || '';
 
   try {
-    // 2. Fetch server metadata timestamp (Only 1 document read!)
     const metaSnap = await getDoc(metaDocRef);
-    
+
     if (metaSnap.exists()) {
       const serverVersion = metaSnap.data().lastUpdated || '';
-      
-      // If matches, return cached menu immediately (Saving Firestore reads!)
+
       if (cachedVersion === serverVersion && cachedMenu.length > 0) {
-        console.log('[Firebase Cache] Menu is up to date. Loading from local storage.');
         return cachedMenu;
       }
 
-      // If version mismatch, fetch full menu from server
-      console.log('[Firebase Cache] Menu version mismatch. Fetching from Firestore server...');
       const querySnap = await getDocs(menuColRef);
       const serverMenu: MenuItem[] = [];
       querySnap.forEach((docSnap: QueryDocumentSnapshot) => {
@@ -186,18 +310,13 @@ export const syncMenuWithCache = async (
         return serverMenu;
       }
     } else {
-      // First-time setup: Seed database with initial menu items
-      console.log('[Firebase Cache] First time setup. Seeding initial menu to Firestore...');
+      // First-time setup: seed the sample menu.
       const batch = writeBatch(db);
-      
       initialMenu.forEach((item) => {
-        const itemRef = doc(db, `stores/${storeSlug}/menu`, item.id);
-        batch.set(itemRef, item);
+        batch.set(doc(db, `stores/${storeSlug}/menu`, item.id), item);
       });
-
       const nowStr = new Date().toISOString();
       batch.set(metaDocRef, { lastUpdated: nowStr });
-      
       await batch.commit();
 
       localStorage.setItem(localCacheKey, JSON.stringify(initialMenu));
@@ -208,131 +327,99 @@ export const syncMenuWithCache = async (
     console.warn('[Firebase Cache] Error syncing menu, falling back to local storage:', err);
   }
 
-  // Fallback to local cache if offline or error
   return cachedMenu.length > 0 ? cachedMenu : initialMenu;
 };
 
-/**
- * Triggers a menu modification on the server and increments menu version
- */
 export const updateServerMenuItem = async (profile: StoreProfile, item: MenuItem) => {
   const storeSlug = getStoreId(profile);
-  const itemRef = doc(db, `stores/${storeSlug}/menu`, item.id);
   const metaDocRef = doc(db, `stores/${storeSlug}/metadata`, 'menu_version');
 
-  await setDoc(itemRef, item);
-  
+  await setDoc(doc(db, `stores/${storeSlug}/menu`, item.id), item);
+
   const nowStr = new Date().toISOString();
   await setDoc(metaDocRef, { lastUpdated: nowStr }, { merge: true });
 
-  // Update local storage cache to keep client in sync immediately
   const localCacheKey = `pico_menu_cache_${storeSlug}`;
-  const localVerKey = `pico_menu_version_${storeSlug}`;
-  
   const cachedMenuRaw = localStorage.getItem(localCacheKey);
   if (cachedMenuRaw) {
     try {
       const cachedMenu = JSON.parse(cachedMenuRaw) as MenuItem[];
-      const updated = cachedMenu.map(m => m.id === item.id ? item : m);
-      if (!updated.some(m => m.id === item.id)) updated.push(item);
+      const updated = cachedMenu.map((m) => (m.id === item.id ? item : m));
+      if (!updated.some((m) => m.id === item.id)) updated.push(item);
       localStorage.setItem(localCacheKey, JSON.stringify(updated));
-      localStorage.setItem(localVerKey, nowStr);
-    } catch (e) {
-      // Ignored
+      localStorage.setItem(`pico_menu_version_${storeSlug}`, nowStr);
+    } catch {
+      /* ignored */
     }
   }
 };
 
-/**
- * Deletes a menu item on the server and increments version
- */
 export const deleteServerMenuItem = async (profile: StoreProfile, itemId: string) => {
   const storeSlug = getStoreId(profile);
-  const itemRef = doc(db, `stores/${storeSlug}/menu`, itemId);
   const metaDocRef = doc(db, `stores/${storeSlug}/metadata`, 'menu_version');
 
-  await deleteDoc(itemRef);
-  
+  await deleteDoc(doc(db, `stores/${storeSlug}/menu`, itemId));
+
   const nowStr = new Date().toISOString();
   await setDoc(metaDocRef, { lastUpdated: nowStr }, { merge: true });
 
-  // Update local storage cache
   const localCacheKey = `pico_menu_cache_${storeSlug}`;
-  const localVerKey = `pico_menu_version_${storeSlug}`;
-  
   const cachedMenuRaw = localStorage.getItem(localCacheKey);
   if (cachedMenuRaw) {
     try {
       const cachedMenu = JSON.parse(cachedMenuRaw) as MenuItem[];
-      const updated = cachedMenu.filter(m => m.id !== itemId);
-      localStorage.setItem(localCacheKey, JSON.stringify(updated));
-      localStorage.setItem(localVerKey, nowStr);
-    } catch (e) {
-      // Ignored
+      localStorage.setItem(localCacheKey, JSON.stringify(cachedMenu.filter((m) => m.id !== itemId)));
+      localStorage.setItem(`pico_menu_version_${storeSlug}`, nowStr);
+    } catch {
+      /* ignored */
     }
   }
 };
 
-
-/**
- * STRATEGY 3: Real-time Transaction Sales Aggregation (Aggregation Document Design)
- * Instead of reading thousands of order receipts from Firestore to calculate business statistics 
- * on every dashboard reload, we atomically aggregate sales totals in a single, dedicated daily document.
- * This turns an N-read operation into a single, highly performant 1-read operation.
- */
-export const placeFirebaseOrder = async (
-  profile: StoreProfile, 
-  order: Order,
-  menu: MenuItem[]
-) => {
+export const placeFirebaseOrder = async (profile: StoreProfile, order: Order, menu: MenuItem[]) => {
   const storeSlug = getStoreId(profile);
-  const dateStr = new Date(order.timestamp).toISOString().split('T')[0]; // YYYY-MM-DD
-  
+  const dateStr = new Date(order.timestamp).toISOString().split('T')[0];
+
   const orderRef = doc(db, `stores/${storeSlug}/orders`, order.id);
   const dailySummaryRef = doc(db, `stores/${storeSlug}/daily_summaries`, dateStr);
 
-  // Calculate Net Profit = Revenue - Total Ingredient Cost
   let totalCost = 0;
-  order.items.forEach(item => {
-    const menuItem = menu.find(m => m.id === item.id);
-    const itemCost = menuItem ? menuItem.cost : 0;
-    totalCost += itemCost * item.quantity;
+  order.items.forEach((item) => {
+    const menuItem = menu.find((m) => m.id === item.id);
+    totalCost += (menuItem ? menuItem.cost : 0) * item.quantity;
   });
   const profit = order.total - totalCost;
 
-  // Save the complete detailed order receipt
   await setDoc(orderRef, {
     ...order,
-    timestamp: order.timestamp.toISOString ? order.timestamp.toISOString() : new Date(order.timestamp).toISOString()
+    timestamp: order.timestamp.toISOString
+      ? order.timestamp.toISOString()
+      : new Date(order.timestamp).toISOString()
   });
 
-  // Increment summary metrics atomically ONLY if order is completed (paid)
   if (order.status === 'completed') {
-    await setDoc(dailySummaryRef, {
-      date: dateStr,
-      revenue: increment(order.total),
-      profit: increment(profit),
-      orderCount: increment(1)
-    }, { merge: true });
-    console.log(`[Firebase Aggregation] Order ${order.id} saved. Atomic summary updated for ${dateStr}.`);
-  } else {
-    console.log(`[Firebase Aggregation] Kitchen ticket ${order.id} (${order.status}) saved. Summary metrics not modified.`);
+    await setDoc(
+      dailySummaryRef,
+      {
+        date: dateStr,
+        revenue: increment(order.total),
+        profit: increment(profit),
+        orderCount: increment(1)
+      },
+      { merge: true }
+    );
   }
 };
 
-/**
- * Update an order's status securely on the server
- */
-export const updateServerOrderStatus = async (profile: StoreProfile, orderId: string, status: string) => {
+export const updateServerOrderStatus = async (
+  profile: StoreProfile,
+  orderId: string,
+  status: string
+) => {
   const storeSlug = getStoreId(profile);
-  const orderRef = doc(db, `stores/${storeSlug}/orders`, orderId);
-  await updateDoc(orderRef, { status });
+  await updateDoc(doc(db, `stores/${storeSlug}/orders`, orderId), { status });
 };
 
-/**
- * Handle Order Refunds
- * Refunded order values are deducted from the daily summary automatically
- */
 export const refundFirebaseOrder = async (
   profile: StoreProfile,
   order: Order,
@@ -340,42 +427,31 @@ export const refundFirebaseOrder = async (
 ) => {
   const storeSlug = getStoreId(profile);
   const dateStr = new Date(order.timestamp).toISOString().split('T')[0];
-  
-  const orderRef = doc(db, `stores/${storeSlug}/orders`, order.id);
-  const dailySummaryRef = doc(db, `stores/${storeSlug}/daily_summaries`, dateStr);
 
-  // Calculate ingredient cost
   let totalCost = 0;
-  order.items.forEach(item => {
-    const menuItem = menu.find(m => m.id === item.id);
-    const itemCost = menuItem ? menuItem.cost : 0;
-    totalCost += itemCost * item.quantity;
+  order.items.forEach((item) => {
+    const menuItem = menu.find((m) => m.id === item.id);
+    totalCost += (menuItem ? menuItem.cost : 0) * item.quantity;
   });
   const profit = order.total - totalCost;
 
-  // Update order status to refunded
-  await updateDoc(orderRef, { status: 'refunded' });
+  await updateDoc(doc(db, `stores/${storeSlug}/orders`, order.id), { status: 'refunded' });
 
-  // Decrement aggregated revenue and profit atomically
-  await setDoc(dailySummaryRef, {
-    revenue: increment(-order.total),
-    profit: increment(-profit),
-    orderCount: increment(-1)
-  }, { merge: true });
-
-  console.log(`[Firebase Aggregation] Order ${order.id} refunded. Atomic summary decremented for ${dateStr}.`);
+  await setDoc(
+    doc(db, `stores/${storeSlug}/daily_summaries`, dateStr),
+    {
+      revenue: increment(-order.total),
+      profit: increment(-profit),
+      orderCount: increment(-1)
+    },
+    { merge: true }
+  );
 };
 
-/**
- * Fetch Aggregated Sales Summaries (Fast 1-read operation for stats)
- * This loads only summary rows, avoiding fetching thousands of order items.
- */
 export const getSalesSummaries = async (profile: StoreProfile): Promise<any[]> => {
   const storeSlug = getStoreId(profile);
-  const summariesColRef = collection(db, `stores/${storeSlug}/daily_summaries`);
-  
   try {
-    const querySnap = await getDocs(summariesColRef);
+    const querySnap = await getDocs(collection(db, `stores/${storeSlug}/daily_summaries`));
     const summaries: any[] = [];
     querySnap.forEach((docSnap: QueryDocumentSnapshot) => {
       summaries.push({ id: docSnap.id, ...docSnap.data() });
@@ -388,27 +464,19 @@ export const getSalesSummaries = async (profile: StoreProfile): Promise<any[]> =
 };
 
 /**
- * Fetch ALL detailed orders, no date limit, no pagination.
- * ⚠️ Expensive: cost scales with the store's entire order history. Only use
- * this for a full export/backup — the transaction list screen should use
- * getRecentOrders() below instead.
+ * ⚠️ Expensive: reads the store's entire order history. Export/backup only.
+ * Note this is also the function that makes the "your data is never held
+ * hostage" promise real — an owner whose trial lapsed can still export.
  */
 export const getDetailedOrders = async (profile: StoreProfile): Promise<Order[]> => {
   const storeSlug = getStoreId(profile);
-  const ordersColRef = collection(db, `stores/${storeSlug}/orders`);
-  
   try {
-    const querySnap = await getDocs(ordersColRef);
+    const querySnap = await getDocs(collection(db, `stores/${storeSlug}/orders`));
     const orders: Order[] = [];
     querySnap.forEach((docSnap: QueryDocumentSnapshot) => {
       const data = docSnap.data();
-      orders.push({
-        ...data,
-        id: docSnap.id,
-        timestamp: new Date(data.timestamp)
-      } as Order);
+      orders.push({ ...data, id: docSnap.id, timestamp: new Date(data.timestamp) } as Order);
     });
-    // Sort by newest first
     return orders.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
   } catch (err) {
     console.error('[Firebase] Failed to fetch detailed orders:', err);
@@ -416,15 +484,6 @@ export const getDetailedOrders = async (profile: StoreProfile): Promise<Order[]>
   }
 };
 
-/**
- * Fetch a page of recent orders for the transaction list screen.
- * The FIRST page (no startAfterDoc) is bounded to the last `days` days, so a
- * routine screen visit only pays for a small, predictable slice. Once the
- * user explicitly asks for older data (passing startAfterDoc), the day
- * cutoff is dropped and pagination just continues back through history by
- * cursor — so cost only grows when the store owner actually asks to see
- * further back, `pageSize` rows at a time.
- */
 export const getRecentOrders = async (
   profile: StoreProfile,
   options?: { days?: number; pageSize?: number; startAfterDoc?: QueryDocumentSnapshot }
@@ -437,11 +496,8 @@ export const getRecentOrders = async (
   const constraints: QueryConstraint[] = [orderBy('timestamp', 'desc')];
 
   if (options?.startAfterDoc) {
-    // Paging further back into history at the user's explicit request —
-    // no day cutoff, just continue from where the last page left off.
     constraints.push(startAfter(options.startAfterDoc));
   } else {
-    // First page of a fresh screen visit — bound the read to a recent window.
     const cutoff = new Date();
     cutoff.setDate(cutoff.getDate() - days);
     constraints.unshift(where('timestamp', '>=', cutoff.toISOString()));
@@ -453,11 +509,7 @@ export const getRecentOrders = async (
     const orders: Order[] = [];
     querySnap.forEach((docSnap: QueryDocumentSnapshot) => {
       const data = docSnap.data();
-      orders.push({
-        ...data,
-        id: docSnap.id,
-        timestamp: new Date(data.timestamp)
-      } as Order);
+      orders.push({ ...data, id: docSnap.id, timestamp: new Date(data.timestamp) } as Order);
     });
     const lastDoc = querySnap.docs.length > 0 ? querySnap.docs[querySnap.docs.length - 1] : null;
     return { orders, lastDoc };
@@ -467,34 +519,19 @@ export const getRecentOrders = async (
   }
 };
 
-/**
- * REAL-TIME: Listen to TODAY's orders — every status, not just active ones.
- * This is what keeps multiple terminals (counter, kitchen display, a
- * manager's dashboard) in sync: a new ticket created at the counter shows
- * up on the kitchen board immediately, and a status change made on the
- * kitchen board (cooking → ready → completed) is reflected everywhere else
- * too, since it's the same underlying order document.
- *
- * Scoped to today only (Strategy ①) — cost is bounded by today's order
- * volume, not the store's entire history. Cross-device visibility into
- * changes on OLDER orders (e.g. refunding a 3-day-old order from another
- * device) is not covered by this listener; those reconcile on next login.
- *
- * Call the returned unsubscribe function in your component's useEffect
- * cleanup so the listener doesn't keep running after the screen unmounts.
- */
 export const subscribeToTodaysOrders = (
   profile: StoreProfile,
   onChange: (orders: Order[]) => void,
   onError?: (error: Error) => void
 ): Unsubscribe => {
   const storeSlug = getStoreId(profile);
-  const ordersColRef = collection(db, `stores/${storeSlug}/orders`);
-
   const todayStart = new Date();
   todayStart.setHours(0, 0, 0, 0);
 
-  const q = query(ordersColRef, where('timestamp', '>=', todayStart.toISOString()));
+  const q = query(
+    collection(db, `stores/${storeSlug}/orders`),
+    where('timestamp', '>=', todayStart.toISOString())
+  );
 
   return onSnapshot(
     q,
@@ -502,58 +539,55 @@ export const subscribeToTodaysOrders = (
       const orders: Order[] = [];
       snapshot.forEach((docSnap: QueryDocumentSnapshot) => {
         const data = docSnap.data();
-        orders.push({
-          ...data,
-          id: docSnap.id,
-          timestamp: new Date(data.timestamp)
-        } as Order);
+        orders.push({ ...data, id: docSnap.id, timestamp: new Date(data.timestamp) } as Order);
       });
       orders.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
       onChange(orders);
     },
     (err) => {
-      console.error('[Firebase Realtime] Failed to listen to today\'s orders:', err);
+      console.error("[Firebase Realtime] Failed to listen to today's orders:", err);
       onError?.(err as Error);
     }
   );
 };
 
-/**
- * REAL-TIME: Listen to just today's daily_summaries document (a single
- * document, so this is about as cheap as a listener can be) so the
- * Dashboard's revenue/profit/order-count KPIs stay live across devices as
- * new sales come in, without re-reading any order documents.
- */
 export const subscribeToTodaySummary = (
   profile: StoreProfile,
-  onChange: (summary: { id: string; date: string; revenue: number; profit: number; orderCount: number }) => void,
+  onChange: (summary: {
+    id: string;
+    date: string;
+    revenue: number;
+    profit: number;
+    orderCount: number;
+  }) => void,
   onError?: (error: Error) => void
 ): Unsubscribe => {
   const storeSlug = getStoreId(profile);
   const dateStr = new Date().toISOString().split('T')[0];
-  const summaryRef = doc(db, `stores/${storeSlug}/daily_summaries`, dateStr);
 
   return onSnapshot(
-    summaryRef,
+    doc(db, `stores/${storeSlug}/daily_summaries`, dateStr),
     (snap) => {
-      if (snap.exists()) {
-        const data = snap.data();
-        onChange({ id: snap.id, date: dateStr, revenue: data.revenue || 0, profit: data.profit || 0, orderCount: data.orderCount || 0 });
-      } else {
-        onChange({ id: dateStr, date: dateStr, revenue: 0, profit: 0, orderCount: 0 });
-      }
+      const data = snap.exists() ? snap.data() : {};
+      onChange({
+        id: dateStr,
+        date: dateStr,
+        revenue: data.revenue || 0,
+        profit: data.profit || 0,
+        orderCount: data.orderCount || 0
+      });
     },
     (err) => {
-      console.error('[Firebase Realtime] Failed to listen to today\'s summary:', err);
+      console.error("[Firebase Realtime] Failed to listen to today's summary:", err);
       onError?.(err as Error);
     }
   );
 };
 
-/**
- * Synchronize tables status securely
- */
-export const syncTablesWithFirebase = async (profile: StoreProfile, tables: any[]): Promise<any[]> => {
+export const syncTablesWithFirebase = async (
+  profile: StoreProfile,
+  tables: any[]
+): Promise<any[]> => {
   const storeSlug = getStoreId(profile);
   const tablesDocRef = doc(db, `stores/${storeSlug}/layout`, 'tables');
 
@@ -561,55 +595,62 @@ export const syncTablesWithFirebase = async (profile: StoreProfile, tables: any[
     const docSnap = await getDoc(tablesDocRef);
     if (docSnap.exists()) {
       return docSnap.data().tables || tables;
-    } else {
-      // Seed initial tables layout
-      await setDoc(tablesDocRef, { tables });
-      return tables;
     }
+    await setDoc(tablesDocRef, { tables });
+    return tables;
   } catch (err) {
     console.warn('[Firebase] Tables layout sync fallback:', err);
     return tables;
   }
 };
 
-/**
- * Save updated tables layout securely
- */
 export const saveTablesToFirebase = async (profile: StoreProfile, tables: any[]) => {
   const storeSlug = getStoreId(profile);
-  const tablesDocRef = doc(db, `stores/${storeSlug}/layout`, 'tables');
-  await setDoc(tablesDocRef, { tables });
+  await setDoc(doc(db, `stores/${storeSlug}/layout`, 'tables'), { tables });
 };
 
 /**
- * Save store profile changes to cloud
+ * Save store profile changes.
+ *
+ * TWO FIXES vs. the old one-liner `setDoc(ref, profile)`:
+ *
+ *  1. `{ merge: true }`. A full overwrite meant that editing an unrelated
+ *     setting (store name, tax rate) with a slightly stale local copy would
+ *     silently erase subscriptionMonthsPaid. In a 12-month rent-to-own
+ *     model, that is a customer losing paid months — a refund dispute.
+ *
+ *  2. Subscription fields are stripped. They are owned by the RevenueCat
+ *     webhook (Admin SDK). The hardened security rules now REJECT any
+ *     client write that touches them, so leaving them in would make every
+ *     settings save fail outright.
  */
 export const saveStoreProfileToFirebase = async (profile: StoreProfile) => {
   const storeSlug = getStoreId(profile);
-  const profileDocRef = doc(db, `stores/${storeSlug}/layout`, 'profile');
-  await setDoc(profileDocRef, profile);
+
+  const {
+    subscriptionStatus: _s,
+    subscriptionMonthsPaid: _m,
+    subscriptionStartDate: _d,
+    subscriptionNextBillingDate: _b,
+    ...clientOwnedFields
+  } = profile;
+
+  await setDoc(doc(db, `stores/${storeSlug}/layout`, 'profile'), clientOwnedFields, {
+    merge: true
+  });
 };
 
-/**
- * REAL-TIME: Listen to the store's own profile document. This matters most
- * for subscription status — once RevenueCat webhooks start writing
- * subscriptionStatus/subscriptionMonthsPaid server-side (via Cloud
- * Functions), this is how the client finds out without a manual refresh.
- */
 export const subscribeToStoreProfile = (
   profile: StoreProfile,
   onChange: (profile: StoreProfile) => void,
   onError?: (error: Error) => void
 ): Unsubscribe => {
   const storeSlug = getStoreId(profile);
-  const profileDocRef = doc(db, `stores/${storeSlug}/layout`, 'profile');
 
   return onSnapshot(
-    profileDocRef,
+    doc(db, `stores/${storeSlug}/layout`, 'profile'),
     (snap) => {
-      if (snap.exists()) {
-        onChange(snap.data() as StoreProfile);
-      }
+      if (snap.exists()) onChange(snap.data() as StoreProfile);
     },
     (err) => {
       console.error('[Firebase Realtime] Failed to listen to store profile:', err);
@@ -618,20 +659,10 @@ export const subscribeToStoreProfile = (
   );
 };
 
-/**
- * Load store profile from cloud if exists. `uid` is the Firebase Auth UID of
- * the signed-in owner (previously this took an email address and derived a
- * slug from it, which didn't match the name-based path used everywhere else —
- * using the UID directly fixes that mismatch as well).
- */
 export const loadStoreProfileFromFirebase = async (uid: string): Promise<StoreProfile | null> => {
-  const profileDocRef = doc(db, `stores/${uid}/layout`, 'profile');
-  
   try {
-    const docSnap = await getDoc(profileDocRef);
-    if (docSnap.exists()) {
-      return docSnap.data() as StoreProfile;
-    }
+    const docSnap = await getDoc(doc(db, `stores/${uid}/layout`, 'profile'));
+    if (docSnap.exists()) return docSnap.data() as StoreProfile;
   } catch (err) {
     console.error('[Firebase] Failed to load profile:', err);
   }

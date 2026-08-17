@@ -5,7 +5,6 @@ import {
   Lock, RefreshCw, HelpCircle, ChevronDown, MessageSquare, 
   Send, Mail, X, CheckCircle, AlertCircle 
 } from 'lucide-react';
-import { ConfirmModal } from './ConfirmModal';
 import { Capacitor } from '@capacitor/core';
 import {
   isNativePurchasesAvailable,
@@ -55,21 +54,6 @@ export const SubscriptionView: React.FC<SubscriptionViewProps> = ({
   const [feedbackCategory, setFeedbackCategory] = useState('Suggestion');
   const [feedbackMessage, setFeedbackMessage] = useState('');
 
-  // Custom Confirmation Modal State
-  const [confirmModal, setConfirmModal] = useState<{
-    isOpen: boolean;
-    title: string;
-    message: string;
-    confirmText?: string;
-    cancelText?: string;
-    onConfirm: () => void;
-    isDanger?: boolean;
-  }>({
-    isOpen: false,
-    title: '',
-    message: '',
-    onConfirm: () => {}
-  });
   const [isSendingFeedback, setIsSendingFeedback] = useState(false);
   const [feedbackSuccess, setFeedbackSuccess] = useState(false);
 
@@ -134,29 +118,6 @@ export const SubscriptionView: React.FC<SubscriptionViewProps> = ({
     }
   };
 
-  // Reset demo subscription state to try again
-  const handleResetSubscription = () => {
-    setConfirmModal({
-      isOpen: true,
-      title: 'Reset Subscription State',
-      message: 'Would you like to reset your subscription state to test the checkout again?',
-      confirmText: 'Reset Subscription',
-      cancelText: 'Cancel',
-      isDanger: true,
-      onConfirm: () => {
-        onUpdateProfile({
-          ...storeProfile,
-          subscriptionStatus: 'none',
-          subscriptionMonthsPaid: 0,
-          subscriptionStartDate: undefined,
-          subscriptionNextBillingDate: undefined
-        });
-        setIsSuccess(false);
-        setConfirmModal(prev => ({ ...prev, isOpen: false }));
-      }
-    });
-  };
-
   return (
     <div className="space-y-8 pb-12 animate-in fade-in duration-300">
       
@@ -205,15 +166,6 @@ export const SubscriptionView: React.FC<SubscriptionViewProps> = ({
               )}
             </div>
           </div>
-
-          {currentStatus !== 'none' && (
-            <button 
-              onClick={handleResetSubscription}
-              className="text-xs text-gray-400 hover:text-red-500 underline font-medium transition"
-            >
-              Reset Subscription (Demo Mode)
-            </button>
-          )}
         </div>
 
         {/* Rent-To-Own Tracker */}
@@ -251,7 +203,12 @@ export const SubscriptionView: React.FC<SubscriptionViewProps> = ({
           </p>
         </div>
 
-        {/* 7-Day Free Trial and Data Retention Policy Banner */}
+        {/* Free trial banner.
+            The old version claimed "Unsubscribed data will be permanently
+            deleted 7 days after trial expiry". That was never implemented,
+            and we've decided not to implement it — a shop's sales records are
+            their tax documents. An unimplemented deletion notice is also a
+            Data Safety mismatch waiting to be flagged, so it's gone. */}
         {currentStatus === 'none' && (
           <div className="bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200/80 rounded-2xl p-5 flex flex-col md:flex-row items-start gap-4 animate-in slide-in-from-top-2 duration-300">
             <div className="p-3 bg-amber-500 text-white rounded-xl shadow-md shadow-amber-500/20">
@@ -259,18 +216,20 @@ export const SubscriptionView: React.FC<SubscriptionViewProps> = ({
             </div>
             <div className="space-y-1.5 min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-2">
-                <h4 className="text-sm font-black text-amber-950 uppercase tracking-wide">Pico POS 7-Day Free Trial</h4>
-                <span className="text-[10px] bg-amber-600 text-white px-2 py-0.5 rounded-full font-black animate-pulse">ACTIVE</span>
+                <h4 className="text-sm font-black text-amber-950 uppercase tracking-wide">Pico POS Free Trial</h4>
+                <span className="text-[10px] bg-amber-600 text-white px-2 py-0.5 rounded-full font-black">ACTIVE</span>
               </div>
               <p className="text-xs text-amber-900 leading-relaxed">
-                A <strong>7-day free trial period</strong> has automatically started with your registration. You can test all POS checkout, receipt, and management features immediately without registering any credit card details.
+                Your <strong>7-day free trial</strong> started when you created your account.
+                Every POS, receipt and management feature is available — no card required.
               </p>
-              <div className="pt-2 border-t border-amber-200/50 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 text-[11px] text-amber-800">
-                <span className="flex items-center gap-1">
-                  🛡️ <strong>Data Storage Guarantee:</strong> Your customized menu, inventory, and transaction history are safely backed up to our cloud server.
-                </span>
-                <span className="flex items-center gap-1 font-bold text-red-600">
-                  ⚠️ Unsubscribed data will be permanently deleted 7 days after trial expiry
+              <div className="pt-2 border-t border-amber-200/50 text-[11px] text-amber-800">
+                <span className="flex items-start gap-1">
+                  🛡️ <span>
+                    <strong>Your data stays yours.</strong> Orders, menu and sales history are
+                    kept on your account whether or not you subscribe, and you can export them
+                    at any time.
+                  </span>
                 </span>
               </div>
             </div>
@@ -737,16 +696,6 @@ export const SubscriptionView: React.FC<SubscriptionViewProps> = ({
         </div>
       )}
 
-      <ConfirmModal 
-        isOpen={confirmModal.isOpen}
-        title={confirmModal.title}
-        message={confirmModal.message}
-        confirmText={confirmModal.confirmText}
-        cancelText={confirmModal.cancelText}
-        isDanger={confirmModal.isDanger}
-        onConfirm={confirmModal.onConfirm}
-        onCancel={() => setConfirmModal(prev => ({ ...prev, isOpen: false }))}
-      />
     </div>
   );
 };

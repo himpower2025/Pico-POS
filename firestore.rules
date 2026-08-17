@@ -1,42 +1,80 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // 1. Global Safety Net
-    match /{document=**} {
-      allow read, write: if false;
-    }
 
-    // Hardened Global Helpers
+    // ── Helpers ──────────────────────────────────────────────────────────
+
     function isValidId(id) {
       return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
     }
 
-    // The store's document ID is always the Firebase Auth UID of its owner
-    // (see getStoreId() in firebaseService.ts). This lets us check ownership
-    // with a plain UID comparison instead of an extra get() lookup, which
-    // would otherwise cost a billed read on every single rule evaluation.
+    // The store's document ID is always the Firebase Auth UID of its owner.
+    // Comparing UIDs directly avoids an extra get() (which would be a billed
+    // read on every rule evaluation).
     function isOwner(storeId) {
       return request.auth != null && request.auth.uid == storeId;
     }
 
-    function incoming() {
-      return request.resource.data;
+    // Fields that ONLY the RevenueCat webhook (Admin SDK, which bypasses
+    // these rules) may ever set. If the client could write these, any store
+    // owner could grant themselves a perpetual licence from the browser
+    // console.
+    function lockedFields() {
+      return [
+        'subscriptionStatus',
+        'subscriptionMonthsPaid',
+        'subscriptionStartDate',
+        'subscriptionNextBillingDate',
+        'trialStartDate',
+        'trialEndsAt'
+      ];
     }
 
-    function existing() {
-      return resource.data;
+    // On update: none of the locked fields may change value.
+    function lockedFieldsUnchanged() {
+      return !request.resource.data.diff(resource.data)
+                .affectedKeys().hasAny(lockedFields().toSet());
     }
 
-    // Store profiles collection
+    // On create: a brand-new profile may only be born unlicensed.
+    function lockedFieldsAreInitial() {
+      return (!('subscriptionStatus' in request.resource.data)
+                || request.resource.data.subscriptionStatus == 'none')
+          && (!('subscriptionMonthsPaid' in request.resource.data)
+                || request.resource.data.subscriptionMonthsPaid == 0)
+          && !('subscriptionStartDate' in request.resource.data)
+          && !('subscriptionNextBillingDate' in request.resource.data);
+    }
+
+    // Prevent writing a profile that claims to be owned by someone else.
+    function ownerIdMatches(storeId) {
+      return !('ownerId' in request.resource.data)
+          || request.resource.data.ownerId == storeId;
+    }
+
+    // ── Store data ───────────────────────────────────────────────────────
+
     match /stores/{storeId} {
       allow read, write: if isValidId(storeId) && isOwner(storeId);
 
-      // Layout configurations (tables mapping, store profile detail)
+      // Layout configurations. `profile` is special: it also carries the
+      // subscription/licence state written server-side by the webhook.
       match /layout/{docId} {
-        allow read, write: if isValidId(storeId) && isValidId(docId) && isOwner(storeId);
+        allow read: if isValidId(storeId) && isOwner(storeId);
+
+        allow create: if isValidId(storeId) && isValidId(docId) && isOwner(storeId)
+                      && ownerIdMatches(storeId)
+                      && (docId != 'profile' || lockedFieldsAreInitial());
+
+        allow update: if isValidId(storeId) && isValidId(docId) && isOwner(storeId)
+                      && ownerIdMatches(storeId)
+                      && (docId != 'profile' || lockedFieldsUnchanged());
+
+        allow delete: if isValidId(storeId) && isValidId(docId) && isOwner(storeId)
+                      && docId != 'profile';
       }
 
-      // Sync and cache metadata (e.g., menu_version)
+      // Sync and cache metadata (e.g. menu_version)
       match /metadata/{docId} {
         allow read, write: if isValidId(storeId) && isValidId(docId) && isOwner(storeId);
       }
@@ -47,17 +85,35 @@ service cloud.firestore {
         allow write: if isValidId(storeId) && isValidId(menuItemId) && isOwner(storeId);
       }
 
-      // Active kitchen tickets and completed/refunded order records
+      // Kitchen tickets and completed/refunded order records
       match /orders/{orderId} {
         allow read: if isValidId(storeId) && isOwner(storeId);
-        allow write: if isValidId(storeId) && isValidId(orderId) && isOwner(storeId);
+        allow create, update: if isValidId(storeId) && isValidId(orderId) && isOwner(storeId);
+        // Sales records are financial history — never client-deletable.
+        allow delete: if false;
       }
 
-      // Daily aggregated sales logs (Atomically computed totals)
+      // Daily aggregated sales logs (atomically computed totals)
       match /daily_summaries/{dateStr} {
         allow read: if isValidId(storeId) && isOwner(storeId);
-        allow write: if isValidId(storeId) && isValidId(dateStr) && isOwner(storeId);
+        allow create, update: if isValidId(storeId) && isValidId(dateStr) && isOwner(storeId);
+        allow delete: if false;
       }
+
+      // Webhook idempotency ledger — Admin SDK only. Not readable or
+      // writable by any client; an owner who could delete an entry here
+      // could make the webhook double-credit a renewal.
+      match /processed_webhook_events/{eventId} {
+        allow read, write: if false;
+      }
+    }
+
+    // ── Default deny ─────────────────────────────────────────────────────
+    // Anything not matched above is denied. (Firestore rules are permissive
+    // by union, so an explicit `if false` catch-all does NOT override the
+    // allows above — this is documentation, not enforcement.)
+    match /{document=**} {
+      allow read, write: if false;
     }
   }
 }

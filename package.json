@@ -14,13 +14,14 @@
     "cap:assets": "npx @capacitor/assets generate"
   },
   "dependencies": {
+    "@capacitor-community/bluetooth-le": "^8.3.0",
+    "@capacitor-firebase/authentication": "^8.4.0",
     "@capacitor/android": "^8.5.0",
     "@capacitor/core": "^8.5.0",
     "@capacitor/ios": "^8.5.0",
-    "@google/genai": "*",
+    "@google/genai": "^1.52.0",
     "@revenuecat/purchases-capacitor": "^13.4.0",
-    "@supabase/supabase-js": "^2.39.0",
-    "firebase": "^10.13.0",
+    "firebase": "^12.17.1",
     "lucide-react": "^0.344.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",

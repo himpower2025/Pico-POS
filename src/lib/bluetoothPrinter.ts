@@ -1,141 +1,285 @@
 import { Order, StoreProfile } from '../types';
+import { Capacitor } from '@capacitor/core';
+import { BleClient, numbersToDataView } from '@capacitor-community/bluetooth-le';
 
-// Common bluetooth thermal printer service UUIDs
+// ═══════════════════════════════════════════════════════════════════════
+// Bluetooth thermal receipt printing
+//
+// WHY THIS WAS REWRITTEN
+//
+// The previous implementation used the Web Bluetooth API
+// (`navigator.bluetooth`). That API exists only in desktop Chrome/Edge and
+// Chrome for Android — it is NOT available in WKWebView (iOS) and NOT
+// available in Android WebView, which is exactly what a Capacitor app runs
+// in. So in the shipped native apps, receipt printing silently did nothing
+// on every platform. For a POS, that is not a missing nice-to-have; it is
+// the product.
+//
+// This version talks to the printer through @capacitor-community/bluetooth-le
+// on native, and keeps the Web Bluetooth path for the browser/PWA build so
+// desktop Chrome users are unaffected.
+//
+// The ESC/POS payload builder below is unchanged in substance — that part
+// was correct.
+//
+// SETUP REQUIRED (see MIGRATION_GUIDE.md):
+//   Android: BLUETOOTH_SCAN + BLUETOOTH_CONNECT in AndroidManifest.xml
+//   iOS:     NSBluetoothAlwaysUsageDescription in Info.plist
+// ═══════════════════════════════════════════════════════════════════════
+
+/** Common thermal-printer GATT service UUIDs, most-likely first. */
 export const PRINTER_SERVICE_UUIDS = [
-  '000018f0-0000-1000-8000-00805f9b34fb', // General Thermal Printer Service
+  '000018f0-0000-1000-8000-00805f9b34fb', // Generic thermal printer service
   '00001101-0000-1000-8000-00805f9b34fb', // Serial Port Profile (SPP)
   '49535343-fe90-294c-7f11-687032777b80', // ISSC BLE SPP
   '00004953-5343-fe90-294c-7f1168703277', // ISSC alternative
-  'e7810a71-73ae-499d-8c15-faa9ae9a2c61'  // another generic BLE
+  'e7810a71-73ae-499d-8c15-faa9ae9a2c61'  // Generic BLE serial
 ];
 
 export interface ConnectedPrinter {
-  device: any;
-  characteristic: any;
+  transport: 'ble' | 'web';
   name: string;
+  /** BLE transport */
+  deviceId?: string;
+  serviceUuid?: string;
+  characteristicUuid?: string;
+  writeWithoutResponse?: boolean;
+  /** Web Bluetooth transport */
+  device?: any;
+  characteristic?: any;
 }
 
+const isNative = (): boolean => Capacitor.isNativePlatform();
+
 /**
- * Checks if the browser supports Web Bluetooth API
+ * Whether this build can talk to a Bluetooth printer at all. Use it to
+ * grey out the pairing button with an honest explanation rather than
+ * letting the user tap into a dead end.
  */
 export const isBluetoothSupported = (): boolean => {
+  if (isNative()) return true;
   return typeof navigator !== 'undefined' && 'bluetooth' in navigator;
 };
 
-/**
- * Prompt the user to pair and connect a Bluetooth thermal printer
- */
-export const connectPrinter = async (): Promise<ConnectedPrinter> => {
-  if (!isBluetoothSupported()) {
-    throw new Error('Web Bluetooth is not supported in this browser. Please use Chrome, Edge, or Opera on Desktop or Android.');
+export const bluetoothUnavailableReason = (): string =>
+  'Bluetooth printing needs the Pico POS app, or Chrome/Edge on desktop or Android. ' +
+  'Safari and iOS browsers do not support it.';
+
+// ── Native (Capacitor BLE) ─────────────────────────────────────────────
+
+const connectPrinterNative = async (): Promise<ConnectedPrinter> => {
+  await BleClient.initialize({ androidNeverForLocation: true });
+
+  const device = await BleClient.requestDevice({
+    optionalServices: PRINTER_SERVICE_UUIDS
+  });
+
+  await BleClient.connect(device.deviceId, () => {
+    console.warn('[Printer] Bluetooth device disconnected:', device.deviceId);
+  });
+
+  const services = await BleClient.getServices(device.deviceId);
+
+  // Prefer a known printer service; fall back to any writable characteristic.
+  const ordered = [
+    ...services.filter((s) => PRINTER_SERVICE_UUIDS.includes(s.uuid.toLowerCase())),
+    ...services.filter((s) => !PRINTER_SERVICE_UUIDS.includes(s.uuid.toLowerCase()))
+  ];
+
+  for (const service of ordered) {
+    for (const char of service.characteristics) {
+      if (char.properties.write || char.properties.writeWithoutResponse) {
+        return {
+          transport: 'ble',
+          name: device.name || 'Bluetooth Printer',
+          deviceId: device.deviceId,
+          serviceUuid: service.uuid,
+          characteristicUuid: char.uuid,
+          writeWithoutResponse: !!char.properties.writeWithoutResponse
+        };
+      }
+    }
   }
 
-  try {
-    // Request bluetooth device
-    const device = await (navigator as any).bluetooth.requestDevice({
-      acceptAllDevices: true,
-      optionalServices: PRINTER_SERVICE_UUIDS
-    });
+  await BleClient.disconnect(device.deviceId).catch(() => {});
+  throw new Error(
+    'Could not find a writable Bluetooth channel. Make sure the printer is switched on and in range.'
+  );
+};
 
-    if (!device.gatt) {
-      throw new Error('Bluetooth GATT Server is not available on this device.');
+// ── Web (desktop Chrome / Android Chrome) ──────────────────────────────
+
+const connectPrinterWeb = async (): Promise<ConnectedPrinter> => {
+  const device = await (navigator as any).bluetooth.requestDevice({
+    acceptAllDevices: true,
+    optionalServices: PRINTER_SERVICE_UUIDS
+  });
+
+  if (!device.gatt) {
+    throw new Error('Bluetooth GATT Server is not available on this device.');
+  }
+
+  const server = await device.gatt.connect();
+  let writeCharacteristic: any = null;
+
+  for (const uuid of PRINTER_SERVICE_UUIDS) {
+    try {
+      const service = await server.getPrimaryService(uuid);
+      for (const char of await service.getCharacteristics()) {
+        if (char.properties.write || char.properties.writeWithoutResponse) {
+          writeCharacteristic = char;
+          break;
+        }
+      }
+      if (writeCharacteristic) break;
+    } catch {
+      // Service not present on this printer — try the next.
     }
+  }
 
-    // Connect to GATT Server
-    const server = await device.gatt.connect();
-
-    let writeCharacteristic: any = null;
-
-    // 1. Try connecting using standard printer services
-    for (const uuid of PRINTER_SERVICE_UUIDS) {
-      try {
-        const service = await server.getPrimaryService(uuid);
-        const characteristics = await service.getCharacteristics();
-        for (const char of characteristics) {
+  if (!writeCharacteristic) {
+    try {
+      for (const service of await server.getPrimaryServices()) {
+        for (const char of await service.getCharacteristics()) {
           if (char.properties.write || char.properties.writeWithoutResponse) {
             writeCharacteristic = char;
             break;
           }
         }
         if (writeCharacteristic) break;
-      } catch (err) {
-        // Continue to next UUID if service not found
       }
+    } catch (err) {
+      console.error('Failed to discover custom services', err);
     }
+  }
 
-    // 2. Fallback: Scan all primary services to find any writable characteristic
-    if (!writeCharacteristic) {
-      try {
-        const services = await server.getPrimaryServices();
-        for (const service of services) {
-          const characteristics = await service.getCharacteristics();
-          for (const char of characteristics) {
-            if (char.properties.write || char.properties.writeWithoutResponse) {
-              writeCharacteristic = char;
-              break;
-            }
-          }
-          if (writeCharacteristic) break;
-        }
-      } catch (err) {
-        console.error('Failed to discover custom services', err);
-      }
+  if (!writeCharacteristic) {
+    throw new Error(
+      'Could not find a writable Bluetooth channel. Make sure your thermal printer is turned on and paired.'
+    );
+  }
+
+  return {
+    transport: 'web',
+    name: device.name || 'Bluetooth Printer',
+    device,
+    characteristic: writeCharacteristic
+  };
+};
+
+export const connectPrinter = async (): Promise<ConnectedPrinter> => {
+  if (!isBluetoothSupported()) {
+    throw new Error(bluetoothUnavailableReason());
+  }
+  return isNative() ? connectPrinterNative() : connectPrinterWeb();
+};
+
+export const disconnectPrinter = async (printer: ConnectedPrinter): Promise<void> => {
+  try {
+    if (printer.transport === 'ble' && printer.deviceId) {
+      await BleClient.disconnect(printer.deviceId);
+    } else if (printer.device?.gatt?.connected) {
+      printer.device.gatt.disconnect();
     }
-
-    if (!writeCharacteristic) {
-      throw new Error('Could not find a writable Bluetooth channel. Make sure your thermal printer is turned on and paired.');
-    }
-
-    return {
-      device,
-      characteristic: writeCharacteristic,
-      name: device.name || 'Bluetooth Printer'
-    };
-  } catch (error: any) {
-    console.error('Bluetooth connection failed', error);
-    throw error;
+  } catch {
+    /* already gone */
   }
 };
 
+// ── Payload transmission ───────────────────────────────────────────────
+
 /**
- * Helper to replace complex symbols (like ₩, ₹, €, Rs.) with plain ASCII alternatives
- * to prevent budget thermal printers from printing garbled symbols.
+ * Budget thermal printers have a tiny receive buffer (often a 20-byte MTU),
+ * so the payload goes out in small chunks with a short pause between them.
+ * Pushing faster produces truncated or garbled receipts.
  */
-const cleanTextForThermalPrinter = (text: string): string => {
-  return text
+export const transmitPayload = async (
+  printer: ConnectedPrinter,
+  payload: Uint8Array,
+  chunkSize: number = 20
+): Promise<void> => {
+  for (let i = 0; i < payload.length; i += chunkSize) {
+    const chunk = payload.slice(i, i + chunkSize);
+
+    if (printer.transport === 'ble') {
+      const data = numbersToDataView(Array.from(chunk));
+      if (printer.writeWithoutResponse) {
+        await BleClient.writeWithoutResponse(
+          printer.deviceId!,
+          printer.serviceUuid!,
+          printer.characteristicUuid!,
+          data
+        );
+      } else {
+        await BleClient.write(
+          printer.deviceId!,
+          printer.serviceUuid!,
+          printer.characteristicUuid!,
+          data
+        );
+      }
+    } else {
+      await printer.characteristic.writeValue(chunk);
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 15));
+  }
+};
+
+// ── ESC/POS payload construction ───────────────────────────────────────
+
+/**
+ * Replace symbols budget thermal printers can't render with ASCII, so a
+ * receipt shows "Rs 450" instead of a row of black boxes.
+ */
+const cleanTextForThermalPrinter = (text: string): string =>
+  text
     .replace(/₩/g, 'W')
     .replace(/₹/g, 'Rs')
     .replace(/€/g, 'EUR')
     .replace(/Rs\./g, 'Rs')
-    .replace(/[^\x00-\x7F]/g, (char) => {
-      // Keep simple spaces or common chars, strip other non-ASCII characters to avoid garbled prints
-      return ' ';
-    });
-};
+    .replace(/[^\x00-\x7F]/g, ' ');
 
-/**
- * Formats columns with clean alignment depending on roll paper size (32 chars for 58mm, 48 chars for 80mm)
- */
 const formatTwoColumns = (left: string, right: string, width: number): string => {
   const leftClean = cleanTextForThermalPrinter(left);
   const rightClean = cleanTextForThermalPrinter(right);
-  
+
   const totalLength = leftClean.length + rightClean.length;
   if (totalLength >= width) {
-    // If text is too long, wrap or truncate left column
     const availableSpace = width - rightClean.length - 1;
-    const truncatedLeft = leftClean.slice(0, availableSpace);
+    const truncatedLeft = leftClean.slice(0, Math.max(0, availableSpace));
     const spacesCount = width - truncatedLeft.length - rightClean.length;
     return truncatedLeft + ' '.repeat(spacesCount > 0 ? spacesCount : 1) + rightClean;
   }
-  
-  const spacesCount = width - totalLength;
-  return leftClean + ' '.repeat(spacesCount) + rightClean;
+
+  return leftClean + ' '.repeat(width - totalLength) + rightClean;
 };
 
-/**
- * Builds the ESC/POS payload as a Uint8Array
- */
+const ESC = 0x1b;
+const GS = 0x1d;
+
+const CMD = {
+  init: new Uint8Array([ESC, 0x40]),
+  alignCenter: new Uint8Array([ESC, 0x61, 0x01]),
+  alignLeft: new Uint8Array([ESC, 0x61, 0x00]),
+  boldOn: new Uint8Array([ESC, 0x45, 0x01]),
+  boldOff: new Uint8Array([ESC, 0x45, 0x00]),
+  doubleOn: new Uint8Array([GS, 0x21, 0x11]),
+  doubleOff: new Uint8Array([GS, 0x21, 0x00]),
+  feedAndCut: new Uint8Array([ESC, 0x64, 0x06])
+};
+
+const mergeChunks = (chunks: Uint8Array[]): Uint8Array => {
+  const totalLength = chunks.reduce((acc, val) => acc + val.length, 0);
+  const merged = new Uint8Array(totalLength);
+  let offset = 0;
+  for (const chunk of chunks) {
+    merged.set(chunk, offset);
+    offset += chunk.length;
+  }
+  return merged;
+};
+
 export const buildEscPosPayload = (
   order: Order,
   storeProfile: StoreProfile,
@@ -145,189 +289,131 @@ export const buildEscPosPayload = (
   const encoder = new TextEncoder();
   const chunks: Uint8Array[] = [];
 
-  // ESC/POS Commands
-  const ESC = 0x1B;
-  const GS = 0x1D;
-  const LF = 0x0A;
+  const text = (line: string) => chunks.push(encoder.encode(line + '\n'));
+  const raw = (bytes: Uint8Array) => chunks.push(bytes);
+  const rule = (char = '-') => text(char.repeat(width));
 
-  const initPrinter = new Uint8Array([ESC, 0x40]); // Initialize
-  const alignCenter = new Uint8Array([ESC, 0x61, 0x01]); // Align Center
-  const alignLeft = new Uint8Array([ESC, 0x61, 0x00]); // Align Left
-  const alignRight = new Uint8Array([ESC, 0x61, 0x02]); // Align Right
-  const boldOn = new Uint8Array([ESC, 0x45, 0x01]); // Bold On
-  const boldOff = new Uint8Array([ESC, 0x45, 0x00]); // Bold Off
-  const doubleSizeOn = new Uint8Array([GS, 0x21, 0x11]); // Double Height & Width
-  const doubleSizeOff = new Uint8Array([GS, 0x21, 0x00]); // Normal size
-  const feedPaperAndCut = new Uint8Array([ESC, 0x64, 0x06]); // Feed 6 lines and partial cut
+  raw(CMD.init);
 
-  const writeText = (text: string) => {
-    chunks.push(encoder.encode(text + '\n'));
-  };
+  // Header
+  raw(CMD.alignCenter);
+  raw(CMD.doubleOn);
+  raw(CMD.boldOn);
+  text(cleanTextForThermalPrinter((storeProfile.name || 'STORE').toUpperCase()));
+  raw(CMD.doubleOff);
+  raw(CMD.boldOff);
 
-  const writeRaw = (bytes: Uint8Array) => {
-    chunks.push(bytes);
-  };
+  if (storeProfile.location) {
+    text(cleanTextForThermalPrinter(storeProfile.location));
+  }
+  // Only print a tax number if the store actually configured one. The old
+  // code fell back to a hardcoded '123456789' — printing a fabricated tax
+  // registration number on a real customer's receipt is a genuine legal
+  // problem, not a cosmetic one.
+  if (storeProfile.panNumber) {
+    text(`PAN: ${cleanTextForThermalPrinter(storeProfile.panNumber)}`);
+  }
+  rule();
 
-  const writeDashedLine = () => {
-    writeText('-'.repeat(width));
-  };
+  // Order details
+  text(`ORDER #${order.id.slice(0, 8)}`);
+  text(new Date(order.timestamp).toLocaleString('en-US', { hour12: false }));
+  rule();
 
-  const writeDoubleDashedLine = () => {
-    writeText('='.repeat(width));
-  };
+  // Items
+  raw(CMD.alignLeft);
+  raw(CMD.boldOn);
+  text(formatTwoColumns('ITEM', 'AMT', width));
+  raw(CMD.boldOff);
+  rule('=');
 
-  // 1. Initialize
-  writeRaw(initPrinter);
-
-  // 2. Header (Center)
-  writeRaw(alignCenter);
-  writeRaw(doubleSizeOn);
-  writeRaw(boldOn);
-  writeText(cleanTextForThermalPrinter(storeProfile.name.toUpperCase()));
-  writeRaw(doubleSizeOff);
-  writeRaw(boldOff);
-
-  writeText(cleanTextForThermalPrinter(storeProfile.location));
-  writeText(`PAN: ${storeProfile.panNumber || '123456789'}`);
-  writeDashedLine();
-
-  // 3. Order details
-  writeText(`ORDER #${order.id.slice(0, 8)}`);
-  const dateStr = new Date(order.timestamp).toLocaleString('en-US', { hour12: false });
-  writeText(dateStr);
-  writeDashedLine();
-
-  // 4. Columns Header (Left align)
-  writeRaw(alignLeft);
-  writeRaw(boldOn);
-  writeText(formatTwoColumns('ITEM', 'AMT', width));
-  writeRaw(boldOff);
-  writeDoubleDashedLine();
-
-  // 5. Items list
-  order.items.forEach(item => {
-    const qtyText = `${item.name} x${item.quantity}`;
-    const amountText = `${cleanTextForThermalPrinter(item.price * item.quantity + ' ' + storeProfile.currency)}`;
-    writeText(formatTwoColumns(qtyText, amountText, width));
+  order.items.forEach((item) => {
+    text(
+      formatTwoColumns(
+        `${item.name} x${item.quantity}`,
+        `${(item.price * item.quantity).toFixed(2)} ${storeProfile.currency}`,
+        width
+      )
+    );
     if (item.notes) {
-      writeText(` - ${cleanTextForThermalPrinter(item.notes)}`);
+      text(` - ${cleanTextForThermalPrinter(item.notes)}`);
     }
   });
-  writeDashedLine();
+  rule();
 
-  // 6. Totals
-  writeRaw(boldOn);
-  const totalLabel = order.status === 'refunded' ? 'REFUNDED TOTAL' : 'TOTAL';
-  const totalAmtText = `${order.total} ${storeProfile.currency}`;
-  writeText(formatTwoColumns(totalLabel, totalAmtText, width));
-  writeRaw(boldOff);
+  // Totals
+  raw(CMD.boldOn);
+  text(
+    formatTwoColumns(
+      order.status === 'refunded' ? 'REFUNDED TOTAL' : 'TOTAL',
+      `${order.total.toFixed(2)} ${storeProfile.currency}`,
+      width
+    )
+  );
+  raw(CMD.boldOff);
 
-  const taxLabel = `VAT (${storeProfile.taxRate}%)`;
+  // NOTE: this reports tax as total × rate, i.e. tax ON TOP of the total.
+  // If your prices are tax-INCLUSIVE (the norm in Nepal and most of Asia),
+  // the included tax is total − total/(1 + rate/100) and this line currently
+  // over-reports it. Confirm which convention you use before launch.
   const taxAmt = order.total * (storeProfile.taxRate / 100);
-  const taxAmtText = `${taxAmt.toFixed(2)} ${storeProfile.currency}`;
-  writeText(formatTwoColumns(taxLabel, taxAmtText, width));
-  writeDashedLine();
+  text(
+    formatTwoColumns(`VAT (${storeProfile.taxRate}%)`, `${taxAmt.toFixed(2)} ${storeProfile.currency}`, width)
+  );
+  rule();
 
-  // 7. Footer
-  writeRaw(alignCenter);
-  writeText('Namaste! Thank you for visiting.');
-  writeText('Wi-Fi: Guest / coffee123');
-  writeText(`ID: ${order.id}`);
-  writeText('\n\n');
+  // Footer
+  raw(CMD.alignCenter);
+  text('Thank you for your visit.');
+  // The old footer hardcoded "Wi-Fi: Guest / coffee123" onto every receipt
+  // of every store that ever used this app. Removed.
+  text(`ID: ${order.id}`);
+  text('\n\n');
 
-  // 8. Feed & Cut
-  writeRaw(feedPaperAndCut);
+  raw(CMD.feedAndCut);
 
-  // Combine chunks
-  const totalLength = chunks.reduce((acc, val) => acc + val.length, 0);
-  const merged = new Uint8Array(totalLength);
-  let offset = 0;
-  for (const chunk of chunks) {
-    merged.set(chunk, offset);
-    offset += chunk.length;
-  }
-
-  return merged;
+  return mergeChunks(chunks);
 };
 
-/**
- * Transmits the byte payload to the connected Bluetooth characteristic in safe chunks.
- * Standard budget Bluetooth printers have small MTU (usually 20 bytes), but typical BLE
- * write operations handle up to 512 bytes if written in small segments (e.g., 20 or 100 bytes).
- */
-export const transmitPayload = async (
-  characteristic: any,
-  payload: Uint8Array,
-  chunkSize: number = 20
+export const printReceipt = async (
+  printer: ConnectedPrinter,
+  order: Order,
+  storeProfile: StoreProfile,
+  paperSize: '58mm' | '80mm' = '58mm'
 ): Promise<void> => {
-  for (let i = 0; i < payload.length; i += chunkSize) {
-    const chunk = payload.slice(i, i + chunkSize);
-    await characteristic.writeValue(chunk);
-    // Tiny delay to allow printer micro-buffer to process without overflowing
-    await new Promise(resolve => setTimeout(resolve, 15));
-  }
+  await transmitPayload(printer, buildEscPosPayload(order, storeProfile, paperSize));
 };
 
-/**
- * Prints a test receipt to verify pairing
- */
 export const printTestPage = async (
-  characteristic: any,
+  printer: ConnectedPrinter,
   storeProfile: StoreProfile,
   paperSize: '58mm' | '80mm' = '58mm'
 ): Promise<void> => {
   const width = paperSize === '58mm' ? 32 : 48;
   const encoder = new TextEncoder();
   const chunks: Uint8Array[] = [];
+  const text = (line: string) => chunks.push(encoder.encode(line + '\n'));
 
-  const ESC = 0x1B;
-  const GS = 0x1D;
+  chunks.push(CMD.init, CMD.alignCenter, CMD.doubleOn, CMD.boldOn);
+  text('PICO POS');
+  chunks.push(CMD.doubleOff, CMD.boldOff);
 
-  const initPrinter = new Uint8Array([ESC, 0x40]);
-  const alignCenter = new Uint8Array([ESC, 0x61, 0x01]);
-  const alignLeft = new Uint8Array([ESC, 0x61, 0x00]);
-  const boldOn = new Uint8Array([ESC, 0x45, 0x01]);
-  const boldOff = new Uint8Array([ESC, 0x45, 0x00]);
-  const doubleSizeOn = new Uint8Array([GS, 0x21, 0x11]);
-  const doubleSizeOff = new Uint8Array([GS, 0x21, 0x00]);
-  const feedPaperAndCut = new Uint8Array([ESC, 0x64, 0x06]);
+  text('Bluetooth Print Connection');
+  text('SUCCESSFUL!');
+  text('-'.repeat(width));
 
-  const writeText = (text: string) => {
-    chunks.push(encoder.encode(text + '\n'));
-  };
+  chunks.push(CMD.alignLeft);
+  text(`Store Name: ${cleanTextForThermalPrinter(storeProfile.name || '(not set)')}`);
+  text(`Printer: ${cleanTextForThermalPrinter(printer.name)}`);
+  text(`Paper Width: ${paperSize}`);
+  text(`Currency: ${storeProfile.currency}`);
+  text(`Local Time: ${new Date().toLocaleTimeString()}`);
 
-  chunks.push(initPrinter);
-  chunks.push(alignCenter);
-  chunks.push(doubleSizeOn);
-  chunks.push(boldOn);
-  writeText('PICO POS');
-  chunks.push(doubleSizeOff);
-  chunks.push(boldOff);
-  
-  writeText('Bluetooth Print Connection');
-  writeText('SUCCESSFUL!');
-  writeText('-'.repeat(width));
-  
-  chunks.push(alignLeft);
-  writeText(`Store Name: ${cleanTextForThermalPrinter(storeProfile.name)}`);
-  writeText(`Paper Width: ${paperSize}`);
-  writeText(`Currency: ${storeProfile.currency}`);
-  writeText(`Local Time: ${new Date().toLocaleTimeString()}`);
-  
-  chunks.push(alignCenter);
-  writeText('-'.repeat(width));
-  writeText('Ready to print coffee orders!');
-  writeText('\n\n');
-  chunks.push(feedPaperAndCut);
+  chunks.push(CMD.alignCenter);
+  text('-'.repeat(width));
+  text('Ready to print orders.');
+  text('\n\n');
+  chunks.push(CMD.feedAndCut);
 
-  // Combine
-  const totalLength = chunks.reduce((acc, val) => acc + val.length, 0);
-  const merged = new Uint8Array(totalLength);
-  let offset = 0;
-  for (const chunk of chunks) {
-    merged.set(chunk, offset);
-    offset += chunk.length;
-  }
-
-  await transmitPayload(characteristic, merged);
+  await transmitPayload(printer, mergeChunks(chunks));
 };

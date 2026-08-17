@@ -5,6 +5,7 @@ import { StoreProfile, MenuItem, Table } from '../types';
 import { formatCurrency } from '../lib/utils';
 import { LegalDocsView } from './LegalDocs';
 import { SubscriptionView } from './SubscriptionView';
+import AccountDangerZone from './AccountDangerZone';
 import { ConfirmModal } from './ConfirmModal';
 
 interface SettingsViewProps {
@@ -562,7 +563,9 @@ const SettingsView: React.FC<SettingsViewProps> = ({
                         </div>
                    </div>
 
-                   {/* Pricing Plan - Removed as requested */}
+                   {/* App Store Guideline 5.1.1(v): account deletion must be
+                       available from inside the app, not via a support email. */}
+                   <AccountDangerZone />
                 </div>
             )}
 

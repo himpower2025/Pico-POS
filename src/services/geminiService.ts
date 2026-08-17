@@ -1,20 +1,33 @@
-import { GoogleGenAI, Type } from "@google/genai";
-import { Order, MenuItem } from "../types";
+import { Order, MenuItem } from '../types';
+import { callAnalyzeBusiness, callForecastSales } from './firebaseService';
 
-const apiKey = process.env.API_KEY || '';
-const ai = new GoogleGenAI({ apiKey });
+// ═══════════════════════════════════════════════════════════════════════
+// AI insights
+//
+// The Gemini API key used to live here, injected at build time by
+// vite.config.ts (`define: { 'process.env.API_KEY': ... }`). Vite's `define`
+// substitutes the literal string into the JS bundle, so anyone who unzipped
+// the APK/IPA — or just opened DevTools on the web build — could read the
+// key and spend your quota. The key now lives only in Cloud Functions
+// secrets, and this file calls those functions instead.
+//
+// The function signatures are unchanged, so DashboardView needs no edits.
+//
+// PRIVACY: aggregateSales() still runs on the client and only totals and
+// menu item names are sent. No customer data ever leaves the device — this
+// is exactly what STORE_SUBMISSION_NOTES.md declares to Apple and Google,
+// so keep it that way if you extend this file.
+// ═══════════════════════════════════════════════════════════════════════
 
-// Helper to calculate raw stats for the AI
 const aggregateSales = (orders: Order[], menu: MenuItem[]) => {
   let totalRevenue = 0;
   let totalCost = 0;
   const itemCounts: Record<string, number> = {};
 
-  orders.forEach(order => {
+  orders.forEach((order) => {
     totalRevenue += order.total;
-    order.items.forEach(item => {
-      // Find original cost from menu
-      const menuItem = menu.find(m => m.id === item.id);
+    order.items.forEach((item) => {
+      const menuItem = menu.find((m) => m.id === item.id);
       const cost = menuItem ? menuItem.cost : 0;
       totalCost += cost * item.quantity;
       itemCounts[item.name] = (itemCounts[item.name] || 0) + item.quantity;
@@ -30,70 +43,27 @@ const aggregateSales = (orders: Order[], menu: MenuItem[]) => {
   };
 };
 
-export const analyzeBusiness = async (orders: Order[], menu: MenuItem[]): Promise<string> => {
-  const stats = aggregateSales(orders, menu);
-  const prompt = `
-    Analyze the following cafe sales data for "Pico Cafe".
-    Data: ${JSON.stringify(stats)}
-    
-    Provide a professional business insight report in ENGLISH.
-    Include:
-    1. Overall performance summary (Revenue, Cost, Net Profit, Margin).
-    2. Best selling items.
-    3. Actionable advice to improve sales and reduce costs.
-    
-    Format the response using Markdown. Keep it professional and executive-summary style.
-  `;
-
+export const analyzeBusiness = async (
+  orders: Order[],
+  menu: MenuItem[],
+  storeName: string = 'the cafe'
+): Promise<string> => {
   try {
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
-      contents: prompt,
-      config: {
-        systemInstruction: "You are an expert Restaurant Business Analyst. You provide critical insights to maximize profit in English."
-      }
-    });
-    // Fix: Ensure string return by handling undefined
-    return response.text || "Analysis completed but no text was generated.";
+    return await callAnalyzeBusiness(aggregateSales(orders, menu), storeName);
   } catch (error) {
-    console.error("Analysis failed", error);
-    return "AI Analysis service is currently unavailable.";
+    console.error('Analysis failed', error);
+    return 'AI Analysis service is currently unavailable.';
   }
 };
 
 export const forecastSales = async (orders: Order[]): Promise<string> => {
-  // Simulate historical context for the AI
-  const prompt = `
-    Based on the current sales patterns (Total orders today: ${orders.length}, Revenue: ${orders.reduce((acc, o) => acc + o.total, 0)}),
-    predict the sales revenue for the NEXT 7 DAYS.
-    
-    Assume today is Friday. Weekends usually see 20% higher traffic.
-    
-    Return ONLY a JSON array of objects with 'day' (string, e.g., 'Sat') and 'revenue' (number).
-  `;
-
   try {
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
-      contents: prompt,
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.ARRAY,
-          items: {
-            type: Type.OBJECT,
-            properties: {
-              day: { type: Type.STRING },
-              revenue: { type: Type.NUMBER }
-            }
-          }
-        }
-      }
-    });
-    // Fix: Ensure string return by handling undefined, fallback to empty JSON array
-    return response.text || "[]";
+    return await callForecastSales(
+      orders.length,
+      orders.reduce((acc, o) => acc + o.total, 0)
+    );
   } catch (error) {
-    console.error("Forecast failed", error);
-    return "[]";
+    console.error('Forecast failed', error);
+    return '[]';
   }
 };
