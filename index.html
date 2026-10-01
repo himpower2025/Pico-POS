@@ -15,17 +15,6 @@
 
     <title>Pico POS</title>
 
-    <!--
-      NOTE: the AI Studio <script type="importmap"> block that used to live
-      here has been removed on purpose. It pointed react / react-dom /
-      lucide-react / recharts at https://aistudiocdn.com at *different major
-      versions* than the ones Vite actually bundles, and it survived into
-      dist/index.html. In a Capacitor build that means (a) the app fetches
-      executable code from a remote CDN at runtime — an App Store 2.5.2
-      rejection risk — and (b) it breaks the moment the till loses internet,
-      which for a POS is the one thing that must not happen.
-      Do not re-add it.
-    -->
   </head>
   <body>
     <div id="root"></div>
