@@ -1,7 +1,8 @@
 <?xml version="1.0" encoding="utf-8" ?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <application
-        android:allowBackup="true"
+        android:allowBackup="false"
+        android:fullBackupContent="false"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:roundIcon="@mipmap/ic_launcher_round"
@@ -32,4 +33,23 @@
     <!-- Permissions -->
 
     <uses-permission android:name="android.permission.INTERNET" />
+
+    <!-- Bluetooth thermal receipt printer.
+         BLUETOOTH_SCAN / BLUETOOTH_CONNECT are the Android 12+ (API 31)
+         permissions. neverForLocation tells the system we are not deriving
+         physical location from BLE scans, which spares the user a location
+         permission prompt they would rightly find odd in a till app. The two
+         legacy permissions are capped at API 30 for older devices. -->
+    <uses-permission android:name="android.permission.BLUETOOTH_SCAN"
+        android:usesPermissionFlags="neverForLocation" />
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+    <uses-permission android:name="android.permission.BLUETOOTH"
+        android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN"
+        android:maxSdkVersion="30" />
+
+    <!-- required="false" so the app still installs on tablets without BLE.
+         A counter tablet that prints nothing is still a working POS. -->
+    <uses-feature android:name="android.hardware.bluetooth_le"
+        android:required="false" />
 </manifest>

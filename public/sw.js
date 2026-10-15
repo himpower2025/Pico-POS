@@ -1,4 +1,4 @@
-const CACHE_NAME = 'pico-pos-v1';
+const CACHE_NAME = 'pico-pos-v2';
 const ASSETS = [
   '/',
   '/index.html',

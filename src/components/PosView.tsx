@@ -622,20 +622,29 @@ const PosView: React.FC<PosViewProps> = ({
 
         <div className="p-4 md:p-6 bg-white border-t border-gray-100 space-y-3 md:space-y-4 shrink-0">
           <div className="space-y-1 md:space-y-2 text-sm md:text-base">
-            <div className="flex justify-between text-gray-500">
-              <span>Subtotal</span>
-              <span>{formatCurrency(orderTotal * 0.87, storeProfile.currency)}</span>
-            </div>
-            <div className="flex justify-between text-gray-500">
-              <span>VAT ({storeProfile.taxRate || 13}%)</span>
-              <span>{formatCurrency(orderTotal * ((storeProfile.taxRate || 13) / 100), storeProfile.currency)}</span>
-            </div>
-            <div className="border-t border-dashed border-gray-200 my-2"></div>
-            <div className="flex justify-between text-xl md:text-2xl font-bold text-gray-900">
-              <span>Total</span>
-              <span>{formatCurrency(orderTotal, storeProfile.currency)}</span>
-            </div>
-          </div>
+  {(() => {
+    const taxRate = storeProfile.taxRate || 13;
+    const taxAmount = orderTotal * (taxRate / 100);
+    const subtotal = orderTotal - taxAmount;
+    return (
+      <>
+        <div className="flex justify-between text-gray-500">
+          <span>Subtotal</span>
+          <span>{formatCurrency(subtotal, storeProfile.currency)}</span>
+        </div>
+        <div className="flex justify-between text-gray-500">
+          <span>VAT ({taxRate}%)</span>
+          <span>{formatCurrency(taxAmount, storeProfile.currency)}</span>
+        </div>
+      </>
+    );
+  })()}
+  <div className="border-t border-dashed border-gray-200 my-2"></div>
+  <div className="flex justify-between text-xl md:text-2xl font-bold text-gray-900">
+    <span>Total</span>
+    <span>{formatCurrency(orderTotal, storeProfile.currency)}</span>
+  </div>
+</div>
           
           <div className="grid grid-cols-2 gap-2">
             {/* Action 1: Send to Kitchen */}

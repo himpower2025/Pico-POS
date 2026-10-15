@@ -47,106 +47,10 @@ const mergeOrders = (prev: Order[], incoming: Order[]): Order[] => {
 };
 
 // Mock Initial Data (Global Currency Prices & Images)
-const INITIAL_MENU: MenuItem[] = [
-  { 
-    id: '1', 
-    name: 'Americano', 
-    category: 'coffee', 
-    price: 3.50, 
-    cost: 0.80, 
-    stock: 100,
-    color: 'bg-amber-800',
-    image: 'https://images.unsplash.com/photo-1509042239860-f550ce710b93?auto=format&fit=crop&w=600&q=80'
-  },
-  { 
-    id: '2', 
-    name: 'Cafe Latte', 
-    category: 'coffee', 
-    price: 4.50, 
-    cost: 1.20, 
-    stock: 80,
-    color: 'bg-amber-100',
-    image: 'https://images.unsplash.com/photo-1561047029-3000c68339ca?auto=format&fit=crop&w=600&q=80'
-  },
-  { 
-    id: '3', 
-    name: 'Cappuccino', 
-    category: 'coffee', 
-    price: 4.50, 
-    cost: 1.20, 
-    stock: 50,
-    color: 'bg-amber-100',
-    image: 'https://images.unsplash.com/photo-1572442388796-11668a67e53d?auto=format&fit=crop&w=600&q=80'
-  },
-  { 
-    id: '4', 
-    name: 'Vanilla Latte', 
-    category: 'coffee', 
-    price: 5.00, 
-    cost: 1.50, 
-    stock: 40,
-    color: 'bg-amber-100',
-    image: 'https://images.unsplash.com/photo-1541167760496-1628856ab772?auto=format&fit=crop&w=600&q=80'
-  },
-  { 
-    id: '5', 
-    name: 'Lemonade', 
-    category: 'beverage', 
-    price: 4.00, 
-    cost: 0.50, 
-    stock: 30,
-    color: 'bg-yellow-200',
-    image: 'https://images.unsplash.com/photo-1513558161293-cdaf765ed2fd?auto=format&fit=crop&w=600&q=80'
-  },
-  { 
-    id: '6', 
-    name: 'Mint Mojito', 
-    category: 'beverage', 
-    price: 5.50, 
-    cost: 1.00, 
-    stock: 25,
-    color: 'bg-green-200',
-    image: 'https://images.unsplash.com/photo-1621263764928-df1444c5e859?auto=format&fit=crop&w=600&q=80'
-  },
-  { 
-    id: '7', 
-    name: 'Chocolate Cake', 
-    category: 'dessert', 
-    price: 6.50, 
-    cost: 2.00, 
-    stock: 10, // Low stock demo
-    color: 'bg-brown-400',
-    image: 'https://images.unsplash.com/photo-1578985545062-69928b1d9587?auto=format&fit=crop&w=600&q=80'
-  },
-  { 
-    id: '8', 
-    name: 'Cheese Cake', 
-    category: 'dessert', 
-    price: 7.00, 
-    cost: 2.50, 
-    stock: 0, // Out of stock demo
-    color: 'bg-yellow-100',
-    image: 'https://images.unsplash.com/photo-1533134242443-d4fd215305ad?auto=format&fit=crop&w=600&q=80'
-  },
-  { 
-    id: '9', 
-    name: 'Club Sandwich', 
-    category: 'meal', 
-    price: 12.00, 
-    cost: 4.00, 
-    stock: 20,
-    color: 'bg-green-100',
-    image: 'https://images.unsplash.com/photo-1528735602780-2552fd46c7af?auto=format&fit=crop&w=600&q=80'
-  },
-];
+const INITIAL_MENU: MenuItem[] = [];
 
 // Initialize tables with some default grid-like coordinates (percentages)
-const INITIAL_TABLES: Table[] = [
-  { id: 1, label: 'T-1', x: 15, y: 15, status: 'empty' },
-  { id: 2, label: 'T-2', x: 55, y: 15, status: 'empty' },
-  { id: 3, label: 'VIP-1', x: 15, y: 55, status: 'empty' },
-  { id: 4, label: 'Patio', x: 55, y: 55, status: 'empty' },
-];
+const INITIAL_TABLES: Table[] = [];
 
 const App: React.FC = () => {
   const [storeProfile, setStoreProfile] = useState<StoreProfile | null>(null);

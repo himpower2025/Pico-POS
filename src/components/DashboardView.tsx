@@ -66,11 +66,8 @@ const DashboardView: React.FC<DashboardViewProps> = ({
   const [expenses, setExpenses] = useState<OperationalExpense[]>(() => {
     try {
       const saved = localStorage.getItem('pico_operating_expenses');
-      return saved ? JSON.parse(saved) : [
-        { id: 'exp-1', description: 'Monthly Shop Rent', amount: 350, date: new Date().toISOString().split('T')[0], category: 'Rent' },
-        { id: 'exp-2', description: 'Electricity & Water Utilities', amount: 80, date: new Date().toISOString().split('T')[0], category: 'Utilities' },
-        { id: 'exp-3', description: 'Store Marketing Flyers', amount: 45, date: new Date().toISOString().split('T')[0], category: 'Marketing' }
-      ];
+      return saved ? JSON.parse(saved) : [];
+    
     } catch (e) {
       return [];
     }
@@ -154,28 +151,44 @@ const DashboardView: React.FC<DashboardViewProps> = ({
     };
   }, [summaries, expenses]);
 
-  // Mock data generation
-  const chartData = useMemo(() => {
-    if (timeRange === 'day') {
-      return Array.from({ length: 12 }, (_, i) => ({
-        name: `${i + 10}:00`,
-        sales: Math.floor(Math.random() * 20000) + 5000,
-        profit: Math.floor(Math.random() * 10000) + 2000
+  // Real data from Firebase daily_summaries
+const chartData = useMemo(() => {
+  if (timeRange === 'day') {
+    // 오늘 날짜 기준 summaries에서 시간대별 분리가 불가능하므로 오늘 합계 1개 표시
+    const today = new Date().toISOString().split('T')[0];
+    const todaySummary = summaries.find(s => s.id === today || s.date === today);
+    return todaySummary
+      ? [{ name: 'Today', sales: todaySummary.revenue || 0, profit: todaySummary.profit || 0 }]
+      : [];
+  } else if (timeRange === 'month') {
+    // 이번 달 날짜별
+    const thisMonth = new Date().toISOString().slice(0, 7); // "2026-10"
+    return summaries
+      .filter(s => (s.id || s.date || '').startsWith(thisMonth))
+      .sort((a, b) => (a.id || a.date || '').localeCompare(b.id || b.date || ''))
+      .map(s => ({
+        name: (s.id || s.date || '').slice(8), // "15" (일자만)
+        sales: s.revenue || 0,
+        profit: s.profit || 0
       }));
-    } else if (timeRange === 'month') {
-        return Array.from({ length: 30 }, (_, i) => ({
-            name: `${i + 1}`,
-            sales: Math.floor(Math.random() * 100000) + 30000,
-            profit: Math.floor(Math.random() * 50000) + 10000
-        }));
-    } else {
-        return ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'].map(m => ({
-            name: m,
-            sales: Math.floor(Math.random() * 500000) + 100000,
-            profit: Math.floor(Math.random() * 200000) + 50000
-        }));
-    }
-  }, [timeRange]);
+  } else {
+    // 연간: 월별 집계
+    const thisYear = new Date().getFullYear().toString();
+    const byMonth: Record<string, { sales: number; profit: number }> = {};
+    summaries
+      .filter(s => (s.id || s.date || '').startsWith(thisYear))
+      .forEach(s => {
+        const month = (s.id || s.date || '').slice(5, 7); // "10"
+        if (!byMonth[month]) byMonth[month] = { sales: 0, profit: 0 };
+        byMonth[month].sales += s.revenue || 0;
+        byMonth[month].profit += s.profit || 0;
+      });
+    const monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    return Object.entries(byMonth)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([m, v]) => ({ name: monthNames[parseInt(m) - 1], ...v }));
+  }
+}, [timeRange, summaries]);
 
   const handleRunAnalysis = async () => {
     if (aiCredits <= 0) {
