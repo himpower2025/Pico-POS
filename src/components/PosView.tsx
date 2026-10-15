@@ -688,11 +688,6 @@ const PosView: React.FC<PosViewProps> = ({
         </div>
       </div>
     </div>
-      <ReceiptModal
-        order={receiptOrder}
-        onClose={() => setReceiptOrder(null)}
-        storeProfile={storeProfile}
-      />
   );
 };
 
