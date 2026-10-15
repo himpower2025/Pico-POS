@@ -693,7 +693,6 @@ const PosView: React.FC<PosViewProps> = ({
         onClose={() => setReceiptOrder(null)}
         storeProfile={storeProfile}
       />
-    </div>
   );
 };
 
