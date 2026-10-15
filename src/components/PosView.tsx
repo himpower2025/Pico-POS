@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Table, MenuItem, OrderItem, StoreProfile, Order } from '../types';
+import ReceiptModal from './ReceiptModal';
 import { 
   Coffee, Utensils, CupSoda, Cake, ShoppingCart, User, 
   ChevronRight, Minus, Plus, Map, StickyNote, ChefHat, 
@@ -37,6 +38,7 @@ const PosView: React.FC<PosViewProps> = ({
   const [activeCategory, setActiveCategory] = useState<string>('all');
   const [noteInputId, setNoteInputId] = useState<string | null>(null); // Track which item is adding a note
   const [selectedFloor, setSelectedFloor] = useState<number>(1);
+  const [receiptOrder, setReceiptOrder] = useState<Order | null>(null);
   
   const floorCount = storeProfile.floorCount !== undefined ? storeProfile.floorCount : 3;
 
@@ -152,25 +154,37 @@ const PosView: React.FC<PosViewProps> = ({
 
   // 2. Direct Immediate Payment / Checkout
   const handlePayment = () => {
-    if (selectedTableId && currentOrder.length > 0) {
-      const activeOrder = orders.find(
-        o => o.tableId === selectedTableId && 
-        (o.status === 'pending' || o.status === 'cooking' || o.status === 'ready')
-      );
+  if (selectedTableId && currentOrder.length > 0) {
+    const activeOrder = orders.find(
+      o => o.tableId === selectedTableId && 
+      (o.status === 'pending' || o.status === 'cooking' || o.status === 'ready')
+    );
 
-      // Charge & complete the transaction
-      onPlaceOrder(
-        selectedTableId, 
-        currentOrder, 
-        orderTotal, 
-        'completed', 
-        activeOrder?.id
-      );
-      
-      setCurrentOrder([]);
-      setSelectedTableId(null);
-    }
-  };
+    const orderId = activeOrder?.id || `ord_${Date.now()}`;
+
+    // 1. Firebase 저장 먼저 — 프린트 성공 여부와 무관하게 결제 완료
+    onPlaceOrder(
+      selectedTableId, 
+      currentOrder, 
+      orderTotal, 
+      'completed', 
+      orderId
+    );
+
+    // 2. 영수증 모달 열기 — 프린트는 여기서 선택적으로
+    setReceiptOrder({
+      id: orderId,
+      tableId: selectedTableId,
+      items: currentOrder,
+      total: orderTotal,
+      status: 'completed',
+      timestamp: new Date(),
+    });
+    
+    setCurrentOrder([]);
+    setSelectedTableId(null);
+  }
+};
 
   // 3. Clear Table / Cancel active kitchen ticket
   const handleCancelActiveTicket = () => {
@@ -412,21 +426,25 @@ const PosView: React.FC<PosViewProps> = ({
                                      <ShoppingCart size={11} />
                                      Add Items
                                   </button>
-                                  <button
-                                    onClick={() => {
-                                      onPlaceOrder(
-                                        t.id, 
-                                        order.items, 
-                                        order.total, 
-                                        'completed', 
-                                        order.id
-                                      );
-                                    }}
-                                    className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-1.5 rounded-lg text-[10px] flex items-center justify-center gap-1 transition active:scale-95 shadow-sm border border-indigo-500"
-                                  >
-                                     <Printer size={11} />
-                                     Pay & Print
-                                  </button>
+                                      <button
+                                        onClick={() => {
+                                        // 1. Firebase 저장
+                                            onPlaceOrder(t.id, order.items, order.total, 'completed', order.id);
+                                        // 2. 영수증 모달 열기
+                                            setReceiptOrder({
+                                              id: order.id,
+                                              tableId: t.id,
+                                              items: order.items,
+                                              total: order.total,
+                                              status: 'completed',
+                                              timestamp: new Date(),
+                                            });
+                                          }}
+                                        className="flex-1 bg-indigo-600 ..."
+                                      >
+                                        <Printer size={11} />
+                                          Pay & Print
+                                        </button>
                                 </div>
                             </div>
                           );
@@ -669,6 +687,12 @@ const PosView: React.FC<PosViewProps> = ({
           </div>
         </div>
       </div>
+    </div>
+      <ReceiptModal
+        order={receiptOrder}
+        onClose={() => setReceiptOrder(null)}
+        storeProfile={storeProfile}
+      />
     </div>
   );
 };
